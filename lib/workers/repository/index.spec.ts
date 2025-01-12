@@ -1,6 +1,7 @@
 import { mock } from 'jest-mock-extended';
-
-import { RenovateConfig, getConfig, mocked } from '../../../test/util';
+import type { RenovateConfig } from '../../../test/util';
+import { mocked } from '../../../test/util';
+import { getConfig } from '../../config/defaults';
 import { GlobalConfig } from '../../config/global';
 import * as _process from './process';
 import type { ExtractResult } from './process/extract-update';

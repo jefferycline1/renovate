@@ -16,7 +16,6 @@ module.exports = {
     'plugin:@typescript-eslint/recommended-requiring-type-checking',
     'plugin:promise/recommended',
     'plugin:jest-formatting/recommended',
-    'prettier',
   ],
   parserOptions: {
     ecmaVersion: 9,
@@ -41,8 +40,18 @@ module.exports = {
     ],
     'import/prefer-default-export': 0, // no benefit
 
+    'import/no-cycle': 2, // cycles don't work when moving to esm
+
+    /*
+     * This rule is not needed since the project uses typescript and the rule
+     * `@typescript-eslint/explicit-function-return-type`.
+     *
+     * Any non-exhaustive definition of the function will therefore result in a
+     * typescript TS2366 error.
+     */
+    'consistent-return': 0,
+
     // other rules
-    'consistent-return': 'error',
     eqeqeq: 'error',
     'no-console': 'error',
     'no-negated-condition': 'error',
@@ -81,6 +90,10 @@ module.exports = {
       'error',
       { assertionStyle: 'as', objectLiteralTypeAssertions: 'allow' },
     ],
+    '@typescript-eslint/consistent-type-imports': [
+      'error',
+      { disallowTypeAnnotations: false },
+    ],
 
     // Makes no sense to allow type inference for expression parameters, but require typing the response
     '@typescript-eslint/explicit-function-return-type': [
@@ -90,14 +103,14 @@ module.exports = {
 
     // TODO: fix lint
     '@typescript-eslint/no-explicit-any': 0,
-    // TODO: https://github.com/renovatebot/renovate/issues/7154
+    // TODO: https://github.com/renovatebot/renovate/discussions/22198
     '@typescript-eslint/no-non-null-assertion': 0,
     '@typescript-eslint/no-unused-vars': [
       2,
       {
         vars: 'all',
         args: 'none',
-        ignoreRestSiblings: false,
+        ignoreRestSiblings: true,
       },
     ],
     '@typescript-eslint/prefer-optional-chain': 2,
@@ -114,7 +127,7 @@ module.exports = {
     '@typescript-eslint/no-unsafe-argument': 0, // thousands of errors :-/
 
     '@typescript-eslint/restrict-template-expressions': [
-      1,
+      2,
       { allowNumber: true, allowBoolean: true },
     ],
     '@typescript-eslint/restrict-plus-operands': 2,
@@ -127,12 +140,22 @@ module.exports = {
       },
     ],
 
-    '@typescript-eslint/unbound-method': 2,
-    '@typescript-eslint/ban-types': 2,
+    '@typescript-eslint/unbound-method': [2, { ignoreStatic: true }],
+    '@typescript-eslint/no-empty-object-type': [
+      2,
+      { allowInterfaces: 'with-single-extends' },
+    ],
     '@renovate/jest-root-describe': 2,
 
     'typescript-enum/no-const-enum': 2,
     'typescript-enum/no-enum': 2,
+    'object-shorthand': [
+      'error',
+      'always',
+      {
+        avoidQuotes: true,
+      },
+    ],
   },
   settings: {
     'import/parsers': {
@@ -191,6 +214,7 @@ module.exports = {
           'error',
           { devDependencies: true },
         ],
+        'no-console': 'off',
       },
     },
     {
@@ -205,6 +229,15 @@ module.exports = {
       rules: {
         // esm always requires extensions
         'import/extensions': 0,
+      },
+    },
+    {
+      files: ['tools/docs/test/**/*.mjs'],
+      env: {
+        jest: false,
+      },
+      rules: {
+        '@typescript-eslint/no-floating-promises': 0,
       },
     },
   ],

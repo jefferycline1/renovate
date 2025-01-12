@@ -5,23 +5,14 @@ description: Renovate's support for ESLint-like shareable configs
 
 # Shareable Config Presets
 
-This document describes how to configure your shared presets.
+This page describes how to configure your shared presets.
 Read the [Key concepts, presets](./key-concepts/presets.md) page to learn more about presets in general.
 
-Shareable config presets can only be used with the JSON format, other formats are not supported.
-
-<!-- prettier-ignore -->
-!!! warning
-    `default.json` is intended for use with presets only!
-    Also, do not use a `renovate.json` file as a preset.
-
-<!-- prettier-ignore -->
-!!! info
-    We've deprecated the use of a `renovate.json` file for presets as this can cause issues if the repository configuration uses a `renovate.json` file as well.
+Shareable config presets must use the JSON or JSON5 formats, other formats are not supported.
 
 <!-- prettier-ignore -->
 !!! tip
-    Describe what your preset is doing by using the `"description"` field.
+    Describe what your preset does in the `"description"` field.
     This way your configuration is self-documenting.
 
 ## Extending from a preset
@@ -33,11 +24,25 @@ Presets can be nested.
 
 Presets should be hosted in repositories, which usually means the same platform host as Renovate is running against.
 
+Alternatively, Renovate can fetch preset files from an HTTP server.
+
 <!-- prettier-ignore -->
 !!! warning
-    npm-based presets are deprecated and support will be removed in a future major release.
+    We deprecated npm-based presets.
+    We plan to drop the npm-based presets feature in a future major release of Renovate.
 
 You can set a Git tag (like a SemVer) to use a specific release of your shared config.
+
+### Preset File Naming
+
+Presets are repo-hosted, and you can have one or more presets hosted per repository.
+If you omit a file name from your preset (e.g. `github>abc/foo`) then Renovate will look for a `default.json` file in the repo.
+If you wish to have an alternative file name, you need to specify it (e.g. `github>abc/foo//alternative-name.json5`).
+
+<!-- prettier-ignore -->
+!!! warning
+    We've deprecated using a `renovate.json` file for the default _preset_ file name in a repository.
+    If you're using a `renovate.json` file to share your presets, rename it to `default.json`.
 
 ### GitHub
 
@@ -46,10 +51,11 @@ You can set a Git tag (like a SemVer) to use a specific release of your shared c
 | GitHub default                              | `github>abc/foo`                 | `default` | `https://github.com/abc/foo` | `default.json`  | Default branch |
 | GitHub with preset name                     | `github>abc/foo:xyz`             | `xyz`     | `https://github.com/abc/foo` | `xyz.json`      | Default branch |
 | GitHub with preset name (JSON5)             | `github>abc/foo:xyz.json5`       | `xyz`     | `https://github.com/abc/foo` | `xyz.json5`     | Default branch |
-| GitHub default with a tag                   | `github>abc/foo#1.5.4`           | `default` | `https://github.com/abc/foo` | `default.json`  | `1.5.4`        |
-| GitHub with preset name with a tag          | `github>abc/foo:xyz#1.5.4`       | `xyz`     | `https://github.com/abc/foo` | `xyz.json`      | `1.5.4`        |
-| GitHub with preset name and path with a tag | `github>abc/foo//path/xyz#1.5.4` | `xyz`     | `https://github.com/abc/foo` | `path/xyz.json` | `1.5.4`        |
-| GitHub with subpreset name and tag          | `github>abc/foo:xyz/sub#1.5.4`   | `sub`     | `https://github.com/abc/foo` | `xyz.json`      | `1.5.4`        |
+| GitHub with preset name and path            | `github>abc/foo//path/xyz`       | `xyz`     | `https://github.com/abc/foo` | `path/xyz.json` | Default branch |
+| GitHub default with a tag                   | `github>abc/foo#1.2.3`           | `default` | `https://github.com/abc/foo` | `default.json`  | `1.2.3`        |
+| GitHub with preset name with a tag          | `github>abc/foo:xyz#1.2.3`       | `xyz`     | `https://github.com/abc/foo` | `xyz.json`      | `1.2.3`        |
+| GitHub with preset name and path with a tag | `github>abc/foo//path/xyz#1.2.3` | `xyz`     | `https://github.com/abc/foo` | `path/xyz.json` | `1.2.3`        |
+| GitHub with subpreset name and tag          | `github>abc/foo:xyz/sub#1.2.3`   | `sub`     | `https://github.com/abc/foo` | `xyz.json`      | `1.2.3`        |
 
 ### GitLab
 
@@ -58,10 +64,10 @@ You can set a Git tag (like a SemVer) to use a specific release of your shared c
 | GitLab default                              | `gitlab>abc/foo`                 | `default` | `https://gitlab.com/abc/foo` | `default.json`  | Default branch |
 | GitLab with preset name                     | `gitlab>abc/foo:xyz`             | `xyz`     | `https://gitlab.com/abc/foo` | `xyz.json`      | Default branch |
 | GitLab with preset name (JSON5)             | `gitlab>abc/foo:xyz.json5`       | `xyz`     | `https://gitlab.com/abc/foo` | `xyz.json5`     | Default branch |
-| GitLab default with a tag                   | `gitlab>abc/foo#1.5.4`           | `default` | `https://gitlab.com/abc/foo` | `default.json`  | `1.5.4`        |
-| GitLab with preset name with a tag          | `gitlab>abc/foo:xyz#1.5.4`       | `xyz`     | `https://gitlab.com/abc/foo` | `xyz.json`      | `1.5.4`        |
-| GitLab with preset name and path with a tag | `gitlab>abc/foo//path/xyz#1.5.4` | `xyz`     | `https://gitlab.com/abc/foo` | `path/xyz.json` | `1.5.4`        |
-| GitLab with subpreset name and tag          | `gitlab>abc/foo:xyz/sub#1.5.4`   | `sub`     | `https://gitlab.com/abc/foo` | `xyz.json`      | `1.5.4`        |
+| GitLab default with a tag                   | `gitlab>abc/foo#1.2.3`           | `default` | `https://gitlab.com/abc/foo` | `default.json`  | `1.2.3`        |
+| GitLab with preset name with a tag          | `gitlab>abc/foo:xyz#1.2.3`       | `xyz`     | `https://gitlab.com/abc/foo` | `xyz.json`      | `1.2.3`        |
+| GitLab with preset name and path with a tag | `gitlab>abc/foo//path/xyz#1.2.3` | `xyz`     | `https://gitlab.com/abc/foo` | `path/xyz.json` | `1.2.3`        |
+| GitLab with subpreset name and tag          | `gitlab>abc/foo:xyz/sub#1.2.3`   | `sub`     | `https://gitlab.com/abc/foo` | `xyz.json`      | `1.2.3`        |
 
 ### Gitea
 
@@ -70,10 +76,10 @@ You can set a Git tag (like a SemVer) to use a specific release of your shared c
 | Gitea default                              | `gitea>abc/foo`                 | `default` | `https://gitea.com/abc/foo` | `default.json`  | Default branch |
 | Gitea with preset name                     | `gitea>abc/foo:xyz`             | `xyz`     | `https://gitea.com/abc/foo` | `xyz.json`      | Default branch |
 | Gitea with preset name (JSON5)             | `gitea>abc/foo:xyz.json5`       | `xyz`     | `https://gitea.com/abc/foo` | `xyz.json5`     | Default branch |
-| Gitea default with a tag                   | `gitea>abc/foo#1.5.4`           | `default` | `https://gitea.com/abc/foo` | `default.json`  | `1.5.4`        |
-| Gitea with preset name with a tag          | `gitea>abc/foo:xyz#1.5.4`       | `xyz`     | `https://gitea.com/abc/foo` | `xyz.json`      | `1.5.4`        |
-| Gitea with preset name and path with a tag | `gitea>abc/foo//path/xyz#1.5.4` | `xyz`     | `https://gitea.com/abc/foo` | `path/xyz.json` | `1.5.4`        |
-| Gitea with subpreset name and tag          | `gitea>abc/foo:xyz/sub#1.5.4`   | `sub`     | `https://gitea.com/abc/foo` | `xyz.json`      | `1.5.4`        |
+| Gitea default with a tag                   | `gitea>abc/foo#1.2.3`           | `default` | `https://gitea.com/abc/foo` | `default.json`  | `1.2.3`        |
+| Gitea with preset name with a tag          | `gitea>abc/foo:xyz#1.2.3`       | `xyz`     | `https://gitea.com/abc/foo` | `xyz.json`      | `1.2.3`        |
+| Gitea with preset name and path with a tag | `gitea>abc/foo//path/xyz#1.2.3` | `xyz`     | `https://gitea.com/abc/foo` | `path/xyz.json` | `1.2.3`        |
+| Gitea with subpreset name and tag          | `gitea>abc/foo:xyz/sub#1.2.3`   | `sub`     | `https://gitea.com/abc/foo` | `xyz.json`      | `1.2.3`        |
 
 ### Self-hosted Git
 
@@ -82,10 +88,11 @@ You can set a Git tag (like a SemVer) to use a specific release of your shared c
 | Local default                              | `local>abc/foo`                 | `default` | `https://github.company.com/abc/foo` | `default.json`  | Default branch |
 | Local with preset path                     | `local>abc/foo:xyz`             | `xyz`     | `https://github.company.com/abc/foo` | `xyz.json`      | Default branch |
 | Local with preset path (JSON5)             | `local>abc/foo:xyz.json5`       | `xyz`     | `https://github.company.com/abc/foo` | `xyz.json5`     | Default branch |
-| Local default with a tag                   | `local>abc/foo#1.5.4`           | `default` | `https://github.company.com/abc/foo` | `default.json`  | `1.5.4`        |
-| Local with preset name with a tag          | `local>abc/foo:xyz#1.5.4`       | `xyz`     | `https://github.company.com/abc/foo` | `xyz.json`      | `1.5.4`        |
-| Local with preset name and path with a tag | `local>abc/foo//path/xyz#1.5.4` | `xyz`     | `https://github.company.com/abc/foo` | `path/xyz.json` | `1.5.4`        |
-| Local with subpreset name and tag          | `local>abc/foo:xyz/sub#1.5.4`   | `sub`     | `https://github.company.com/abc/foo` | `xyz.json`      | `1.5.4`        |
+| Local with preset name and path            | `local>abc/foo//path/xyz`       | `xyz`     | `https://github.company.com/abc/foo` | `path/xyz.json` | Default branch |
+| Local default with a tag                   | `local>abc/foo#1.2.3`           | `default` | `https://github.company.com/abc/foo` | `default.json`  | `1.2.3`        |
+| Local with preset name with a tag          | `local>abc/foo:xyz#1.2.3`       | `xyz`     | `https://github.company.com/abc/foo` | `xyz.json`      | `1.2.3`        |
+| Local with preset name and path with a tag | `local>abc/foo//path/xyz#1.2.3` | `xyz`     | `https://github.company.com/abc/foo` | `path/xyz.json` | `1.2.3`        |
+| Local with subpreset name and tag          | `local>abc/foo:xyz/sub#1.2.3`   | `sub`     | `https://github.company.com/abc/foo` | `xyz.json`      | `1.2.3`        |
 
 <!-- prettier-ignore -->
 !!! tip
@@ -95,41 +102,42 @@ You can set a Git tag (like a SemVer) to use a specific release of your shared c
 
 ## Example configs
 
-An example of a small rule is `:preserveSemverRanges`, which has the description "Preserve (but continue to upgrade) any existing semver ranges".
+An example of a small rule is `:preserveSemverRanges`, which has the description "Preserve (but continue to upgrade) any existing SemVer ranges.".
 It simply sets the configuration option `rangeStrategy` to `replace`.
 
-An example of a full config is `config:base`, which is Renovate's default configuration.
-It mostly uses Renovate config defaults but adds a few smart customisations such as grouping monorepo packages together.
+An example of a full config is `config:recommended`, which is Renovate's default configuration.
+It mostly uses Renovate config defaults but adds a few smart customizations such as grouping monorepo packages together.
 
 <!-- prettier-ignore -->
 !!! note
-    The `:xyz` naming convention (with `:` prefix) is a special shorthand for the `default:` presets.
-    e.g. `:xyz` is equivalent to `default:xyz`.
+    The `:xyz` naming convention (with `:` prefix) is shorthand for the `default:` presets.
+    For example: `:xyz` is the same as `default:xyz`.
 
 ## How to Use Preset Configs
 
-By default, the Renovate App's onboarding process will suggest `["config:base]"`.
-If you are self hosting you must add `"onboardingConfig": { "extends": ["config:base"] }` to your bot's config.
+By default, Renovate App's onboarding PR suggests the `["config:recommended"]` preset.
+If you're self hosting, and want to use the `config:recommended` preset, then you must add `"onboardingConfig": { "extends": ["config:recommended"] }` to your bot's config.
+
+Read the [Full Config Presets](./presets-config.md) page to learn more about our `config:` presets.
 
 A typical onboarding `renovate.json` looks like this:
 
 ```json
 {
-  "extends": ["config:base"]
+  "extends": ["config:recommended"]
 }
 ```
 
-Say you want to modify the default behavior, for example scheduling Renovate to process upgrades during non-office hours only.
-To do this you can modify the default `renovate.json` file like this:
+Here's an example of using presets to change Renovate's behavior.
+You're happy with the `config:recommended` preset, but want Renovate to create PRs when you're not at the office.
+You look at our `schedule:` presets, and find the `schedule:nonOfficeHours` preset.
+You put `schedule:nonOfficeHours` in the `extends` array of your `renovate.json` file, like this:
 
 ```json
 {
-  "extends": ["config:base", "schedule:nonOfficeHours"]
+  "extends": ["config:recommended", "schedule:nonOfficeHours"]
 }
 ```
-
-This makes use of the `schedules:` presets.
-You can find the Renovate team's preset configs at the "Config Presets" section of [Renovate Docs](https://docs.renovatebot.com).
 
 ## Preset Parameters
 
@@ -159,8 +167,8 @@ Here is how you would use these in your Renovate config:
 In short, the number of `{{argx}}` parameters in the definition is how many parameters you need to provide.
 Parameters must be strings, non-quoted, and separated by commas if there are more than one.
 
-If you find that you are repeating config a lot, you might consider publishing one of these types of parameterised presets yourself.
-Or if you think your preset would be valuable for others, please contribute a PR to the Renovate repository.
+If you find that you are repeating config a lot, you might consider publishing one of these types of parameterized presets yourself.
+Or if you think your preset would be valuable for others, please contribute a PR to the Renovate repository, see [Contributing to presets](#contributing-to-presets).
 
 ## GitHub-hosted Presets
 
@@ -168,26 +176,26 @@ To host your preset config on GitHub:
 
 - Create a new repository. Normally you'd call it `renovate-config` but it can be named anything
 - Add configuration files to this new repo for any presets you want to share. For the default preset, `default.json` will be checked. For named presets, `<preset-name>.json` will be loaded. For example, loading preset `library` would load `library.json`. No other files are necessary.
-- In other repos, reference it in an extends array like "github>owner/name", for example:
+- In other repos, reference it in an extends array like `"github>owner/name"`, for example:
 
-```json
-{
-  "extends": ["github>rarkins/renovate-config"]
-}
-```
+  ```json
+  {
+    "extends": ["github>rarkins/renovate-config"]
+  }
+  ```
 
 From then on Renovate will use the Renovate config from the preset repo's default branch.
 You do not need to add it as a devDependency or add any other files to the preset repo.
 
 ## GitLab-hosted Presets
 
-For a private GitLab repository Renovate requires at least _Reporter_ level access.
+For a private GitLab repository Renovate requires at least `Reporter` level access.
 
 To host your preset config on GitLab:
 
 - Create a new repository on GitLab. Normally you'd call it `renovate-config` but it can be named anything
 - Add a `default.json` to this new repo containing the preset config. No other files are necessary
-- In other repos, reference it in an extends array like "gitlab>owner/name", e.g. "gitlab>rarkins/renovate-config"
+- In other repos, reference it in an extends array like `"gitlab>owner/name"`, e.g. `"gitlab>rarkins/renovate-config"`
 
 ## Gitea-hosted Presets
 
@@ -204,18 +212,77 @@ This is especially helpful in self-hosted scenarios where public presets cannot 
 Local presets are specified either by leaving out any prefix, e.g. `owner/name`, or explicitly by adding a `local>` prefix, e.g. `local>owner/name`.
 Renovate will determine the current platform and look up the preset from there.
 
+## Fetching presets from an HTTP server
+
+If your desired platform is not yet supported, or if you want presets to work when you run Renovate with `--platform=local`, you can specify presets using HTTP URLs:
+
+```json
+{
+  "extends": [
+    "http://my.server/users/me/repos/renovate-presets/raw/default.json?at=refs%2Fheads%2Fmain"
+  ]
+}
+```
+
+Parameters are supported similar to other methods:
+
+```json
+{
+  "extends": [
+    "http://my.server/users/me/repos/renovate-presets/raw/default.json?at=refs%2Fheads%2Fmain(param)"
+  ]
+}
+```
+
+## Templating presets
+
+You can use [Handlebars](https://handlebarsjs.com/) templates to be flexible with your presets.
+This can be handy when you want to include presets conditionally.
+
+<!-- prettier-ignore -->
+!!! note
+    The template only supports a small subset of options, but you can extend them via `customEnvVariables`.
+
+Read the [templates](./templates.md) section to learn more.
+
+### Example use-case
+
+The following example shows a self-hosted Renovate preset located in a GitLab repository called `renovate/presets`.
+
+```json
+{
+  "extends": ["local>renovate/presets"]
+}
+```
+
+Usually you want to validate the preset before you put it in your Renovate configuration
+Here is an example of how you can use templating to validate and load the preset on a branch level:
+
+```javascript
+// config.js
+module.exports = {
+  customEnvVariables: {
+    GITLAB_REF: process.env.CI_COMMIT_REF_NAME || 'main',
+  },
+  extends: ['local>renovate/presets#{{ env.GITLAB_REF }}'],
+};
+```
+
 ## Contributing to presets
 
-Have you configured a rule that you think others might benefit from?
-Please consider contributing it to the [Renovate](https://github.com/renovatebot/renovate) repository so that it gains higher visibility and saves others from reinventing the same thing.
+Have you configured a rule that could help others?
+Please consider contributing it to the [Renovate repository](https://github.com/renovatebot/renovate/tree/main/lib/config/presets/internal) so that it gains higher visibility and saves others from reinventing the same thing.
 
-## Organization level presets
+Create a [discussion](https://github.com/renovatebot/renovate/discussions) to propose your preset to the Renovate maintainers.
+The maintainers can also help improve the preset, and let you know where to put it in the code.
+If you are proposing a "monorepo" preset addition then it's OK to raise a PR directly as that can be more efficient than a GitHub Discussion.
 
-Whenever repository onboarding happens, Renovate checks if the current user/group/org has a default config to extend.
-It looks for:
+## Group/Organization level presets
 
-- A repository called `renovate-config` under the same user/group/org with a `default.json` file or
-- A repository named like `.{{platform}}` (e.g. `.github`) under the same user/group/org with `renovate-config.json`
+Whenever repository onboarding happens, Renovate checks for a a default config to extend.
+Renovate will check for a repository called `renovate-config` with a `default.json` file in the parent user/group/org of the repository.
+On platforms that support nested groups (e.g. GitLab), Renovate will check for this repository at each level of grouping, from nearest to furthest, and use the first one it finds.
+On all platforms, it will then look for a repository named like `.{{platform}}` (e.g. `.github`) with a `renovate-config.json`, under the same top-level user/group/org.
 
 If found, that repository's preset will be suggested as the sole extended preset, and any existing `onboardingConfig` config will be ignored/overridden.
 For example the result may be:
@@ -249,7 +316,7 @@ For example:
   "version": "0.0.1",
   "renovate-config": {
     "default": {
-      "extends": ["config:base", "schedule:nonOfficeHours"]
+      "extends": ["config:recommended", "schedule:nonOfficeHours"]
     }
   }
 }

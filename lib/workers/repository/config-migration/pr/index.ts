@@ -2,30 +2,38 @@ import is from '@sindresorhus/is';
 import { GlobalConfig } from '../../../../config/global';
 import type { RenovateConfig } from '../../../../config/types';
 import { logger } from '../../../../logger';
+import type { Pr } from '../../../../modules/platform';
 import { platform } from '../../../../modules/platform';
 import { hashBody } from '../../../../modules/platform/pr-body';
+import { scm } from '../../../../modules/platform/scm';
 import { emojify } from '../../../../util/emoji';
-import { deleteBranch } from '../../../../util/git';
+import { coerceString } from '../../../../util/string';
 import * as template from '../../../../util/template';
 import { joinUrlParts } from '../../../../util/url';
 import { getPlatformPrOptions } from '../../update/pr';
 import { prepareLabels } from '../../update/pr/labels';
 import { addParticipants } from '../../update/pr/participants';
+import { ConfigMigrationCommitMessageFactory } from '../branch/commit-message';
 import type { MigratedData } from '../branch/migrated-data';
 import { getMigrationBranchName } from '../common';
 
 export async function ensureConfigMigrationPr(
   config: RenovateConfig,
-  migratedConfigData: MigratedData
-): Promise<void> {
+  migratedConfigData: MigratedData,
+): Promise<Pr | null> {
   logger.debug('ensureConfigMigrationPr()');
   const docsLink = joinUrlParts(
-    config.productLinks?.documentation ?? '',
-    'configuration-options/#configmigration'
+    coerceString(config.productLinks?.documentation),
+    'configuration-options/#configmigration',
   );
   const branchName = getMigrationBranchName(config);
-  const prTitle = 'Migrate Renovate config';
-  const existingPr = await platform.getBranchPr(branchName);
+  const commitMessageFactory = new ConfigMigrationCommitMessageFactory(
+    config,
+    migratedConfigData.filename,
+  );
+
+  const prTitle = commitMessageFactory.getPrTitle();
+  const existingPr = await platform.getBranchPr(branchName, config.baseBranch);
   const filename = migratedConfigData.filename;
   logger.debug('Filling in config migration PR template');
   let prBody = `The Renovate config in this repository needs migrating. Typically this is because one or more configuration options you are using have been renamed.
@@ -41,9 +49,11 @@ ${
     : ''
 }
 
+:no_bell: **Ignore**: Close this PR and you won't be reminded about config migration again, but one day your current config may no longer be valid.
+
 :question: Got questions? Does something look wrong to you? Please don't hesitate to [request help here](${
       config.productLinks?.help
-    }).\n\n`
+    }).\n\n`,
   );
 
   if (is.string(config.prHeader)) {
@@ -60,9 +70,12 @@ ${
     logger.debug('Found open migration PR');
     // Check if existing PR needs updating
     const prBodyHash = hashBody(prBody);
-    if (existingPr.bodyStruct?.hash === prBodyHash) {
-      logger.debug({ pr: existingPr.number }, `Does not need updating`);
-      return;
+    if (
+      existingPr.bodyStruct?.hash === prBodyHash &&
+      existingPr.title === prTitle
+    ) {
+      logger.debug(`Pr does not need updating, PrNo: ${existingPr.number}`);
+      return existingPr;
     }
     // PR must need updating
     if (GlobalConfig.get('dryRun')) {
@@ -70,12 +83,12 @@ ${
     } else {
       await platform.updatePr({
         number: existingPr.number,
-        prTitle: existingPr.title,
+        prTitle,
         prBody,
       });
       logger.info({ pr: existingPr.number }, 'Migration PR updated');
     }
-    return;
+    return existingPr;
   }
   logger.debug('Creating migration PR');
   const labels = prepareLabels(config);
@@ -85,12 +98,12 @@ ${
     } else {
       const pr = await platform.createPr({
         sourceBranch: branchName,
-        // TODO #7154
+        // TODO #22198
         targetBranch: config.defaultBranch!,
         prTitle,
         prBody,
         labels,
-        platformOptions: getPlatformPrOptions({
+        platformPrOptions: getPlatformPrOptions({
           ...config,
           automerge: false,
         }),
@@ -99,21 +112,25 @@ ${
       if (pr) {
         await addParticipants(config, pr);
       }
+
+      return pr;
     }
   } catch (err) {
     if (
       err.response?.statusCode === 422 &&
       err.response?.body?.errors?.[0]?.message?.startsWith(
-        'A pull request already exists'
+        'A pull request already exists',
       )
     ) {
       logger.warn(
         { err },
-        'Migration PR already exists but cannot find it. It was probably created by a different user.'
+        'Migration PR already exists but cannot find it. It was probably created by a different user.',
       );
-      await deleteBranch(branchName);
-      return;
+      await scm.deleteBranch(branchName);
+      return null;
     }
     throw err;
   }
+
+  return null;
 }

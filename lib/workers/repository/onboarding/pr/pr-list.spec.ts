@@ -1,19 +1,21 @@
-import { RenovateConfig, getConfig } from '../../../../../test/util';
+import type { RenovateConfig } from '../../../../../test/util';
+import { partial } from '../../../../../test/util';
 import type { BranchConfig } from '../../../types';
-import { getPrList } from './pr-list';
+import { getExpectedPrList } from './pr-list';
 
 describe('workers/repository/onboarding/pr/pr-list', () => {
-  describe('getPrList()', () => {
+  describe('getExpectedPrList()', () => {
     let config: RenovateConfig;
 
     beforeEach(() => {
-      jest.resetAllMocks();
-      config = getConfig();
+      config = partial<RenovateConfig>({
+        prHourlyLimit: 2, // default
+      });
     });
 
     it('handles empty', () => {
       const branches: BranchConfig[] = [];
-      const res = getPrList(config, branches);
+      const res = getExpectedPrList(config, branches);
       expect(res).toMatchInlineSnapshot(`
         "
         ### What to Expect
@@ -24,21 +26,23 @@ describe('workers/repository/onboarding/pr/pr-list', () => {
     });
 
     it('has special lock file maintenance description', () => {
-      const branches = [
+      const branches: BranchConfig[] = [
         {
           prTitle: 'Lock file maintenance',
           schedule: ['before 5am'],
           branchName: 'renovate/lock-file-maintenance',
+          baseBranch: 'base',
           manager: 'some-manager',
           upgrades: [
             {
               manager: 'some-manager',
               updateType: 'lockFileMaintenance',
-            } as never,
+              branchName: 'some-branch',
+            },
           ],
         },
       ];
-      const res = getPrList(config, branches);
+      const res = getExpectedPrList(config, branches);
       expect(res).toMatchInlineSnapshot(`
         "
         ### What to Expect
@@ -48,8 +52,9 @@ describe('workers/repository/onboarding/pr/pr-list', () => {
         <details>
         <summary>Lock file maintenance</summary>
 
-          - Schedule: [\\"before 5am\\"]
+          - Schedule: ["before 5am"]
           - Branch name: \`renovate/lock-file-maintenance\`
+          - Merge into: \`base\`
           - Regenerate lock files to use latest dependency versions
 
         </details>
@@ -59,10 +64,10 @@ describe('workers/repository/onboarding/pr/pr-list', () => {
     });
 
     it('handles multiple', () => {
-      const branches = [
+      const branches: BranchConfig[] = [
         {
           prTitle: 'Pin dependencies',
-          baseBranch: 'some-other',
+          baseBranch: 'base',
           branchName: 'renovate/pin-dependencies',
           manager: 'some-manager',
           upgrades: [
@@ -85,6 +90,7 @@ describe('workers/repository/onboarding/pr/pr-list', () => {
         {
           prTitle: 'Update a to v2',
           branchName: 'renovate/a-2.x',
+          baseBranch: '', // handles case where baseBranch name is falsy
           manager: 'some-manager',
           upgrades: [
             {
@@ -95,12 +101,13 @@ describe('workers/repository/onboarding/pr/pr-list', () => {
               depType: 'devDependencies',
               newValue: '2.0.1',
               isLockfileUpdate: true,
-            } as never,
+              branchName: 'some-branch',
+            },
           ],
         },
       ];
       config.prHourlyLimit = 1;
-      const res = getPrList(config, branches);
+      const res = getExpectedPrList(config, branches);
       expect(res).toMatchInlineSnapshot(`
         "
         ### What to Expect
@@ -111,7 +118,7 @@ describe('workers/repository/onboarding/pr/pr-list', () => {
         <summary>Pin dependencies</summary>
 
           - Branch name: \`renovate/pin-dependencies\`
-          - Merge into: \`some-other\`
+          - Merge into: \`base\`
           - Pin [a](https://a) to \`1.1.0\`
           - Pin b to \`1.5.3\`
 
@@ -127,9 +134,9 @@ describe('workers/repository/onboarding/pr/pr-list', () => {
 
         </details>
 
-        <br />
 
-        🚸 Branch creation will be limited to maximum 1 per hour, so it doesn't swamp any CI resources or spam the project. See docs for \`prhourlylimit\` for details.
+
+        🚸 Branch creation will be limited to maximum 1 per hour, so it doesn't swamp any CI resources or overwhelm the project. See docs for \`prhourlylimit\` for details.
 
         "
       `);

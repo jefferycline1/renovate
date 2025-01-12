@@ -4,7 +4,11 @@ import { fs, partial } from '../../../../test/util';
 import { GlobalConfig } from '../../../config/global';
 import type { RepoGlobalConfig } from '../../../config/types';
 import type { UpdateArtifact } from '../types';
-import { getBundlerConstraint, getRubyConstraint } from './common';
+import {
+  getBundlerConstraint,
+  getLockFilePath,
+  getRubyConstraint,
+} from './common';
 
 jest.mock('../../../util/fs');
 
@@ -15,6 +19,7 @@ const adminConfig: RepoGlobalConfig = {
   // `join` fixes Windows CI
   localDir: join('/tmp/github/some/repo'),
   cacheDir: join('/tmp/cache'),
+  containerbaseDir: join('/tmp/cache/containerbase'),
 };
 
 describe('modules/manager/bundler/common', () => {
@@ -23,7 +28,7 @@ describe('modules/manager/bundler/common', () => {
   });
 
   describe('getBundlerConstraint', () => {
-    it('uses existing contraint', () => {
+    it('uses existing constraint', () => {
       const config: Pick<UpdateArtifact, 'config'> = {
         config: {
           constraints: { bundler: '2.1.0' },
@@ -51,7 +56,7 @@ describe('modules/manager/bundler/common', () => {
   });
 
   describe('getRubyConstraint', () => {
-    it('uses existing contraint', async () => {
+    it('uses existing constraint', async () => {
       const config = partial<UpdateArtifact>({
         packageFileName: 'Gemfile',
         newPackageFileContent: gemfile,
@@ -63,7 +68,7 @@ describe('modules/manager/bundler/common', () => {
       expect(version).toBe('2.1.0');
     });
 
-    it('extracts from lockfile', async () => {
+    it('extracts from gemfile', async () => {
       const config = partial<UpdateArtifact>({
         packageFileName: 'Gemfile',
         newPackageFileContent: gemfile,
@@ -79,9 +84,37 @@ describe('modules/manager/bundler/common', () => {
         newPackageFileContent: '',
         config: {},
       });
-      fs.readLocalFile.mockResolvedValueOnce('ruby-1.2.3');
+      fs.readLocalFile.mockResolvedValueOnce('2.7.8');
       const version = await getRubyConstraint(config);
-      expect(version).toBe('1.2.3');
+      expect(version).toBe('2.7.8');
+    });
+
+    it('extracts from .tool-versions', async () => {
+      const config = partial<UpdateArtifact>({
+        packageFileName: 'Gemfile',
+        newPackageFileContent: '',
+        config: {},
+      });
+      fs.readLocalFile
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce('python\t3.8.10\nruby\t3.3.4\n');
+      const version = await getRubyConstraint(config);
+      expect(version).toBe('3.3.4');
+    });
+
+    it('extracts from lockfile', async () => {
+      const config = partial<UpdateArtifact>({
+        packageFileName: 'Gemfile',
+        newPackageFileContent: '',
+        config: {},
+      });
+      fs.localPathExists.mockResolvedValueOnce(true);
+      fs.readLocalFile
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(Fixtures.get('Gemfile.rubyci.lock'));
+      const version = await getRubyConstraint(config);
+      expect(version).toBe('2.6.5');
     });
 
     it('returns null', async () => {
@@ -92,6 +125,20 @@ describe('modules/manager/bundler/common', () => {
       });
       const version = await getRubyConstraint(config);
       expect(version).toBeNull();
+    });
+  });
+
+  describe('getLockFileName', () => {
+    it('returns packageFileName.lock', async () => {
+      fs.localPathExists.mockResolvedValueOnce(true);
+      const lockFileName = await getLockFilePath('packageFileName');
+      expect(lockFileName).toBe('packageFileName.lock');
+    });
+
+    it('returns Gemfile.lock', async () => {
+      fs.localPathExists.mockResolvedValueOnce(false);
+      const lockFileName = await getLockFilePath('packageFileName');
+      expect(lockFileName).toBe('Gemfile.lock');
     });
   });
 });

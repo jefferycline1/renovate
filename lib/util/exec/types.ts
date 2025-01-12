@@ -1,4 +1,5 @@
-import type { ExecOptions as ChildProcessExecOptions } from 'child_process';
+import type { SpawnOptions as ChildProcessSpawnOptions } from 'node:child_process';
+import type { UserEnv } from '../../config/types';
 
 export interface ToolConstraint {
   toolName: string;
@@ -7,7 +8,8 @@ export interface ToolConstraint {
 
 export interface ToolConfig {
   datasource: string;
-  depName: string;
+  extractVersion?: string;
+  packageName: string;
   hash?: boolean;
   versioning: string;
 }
@@ -18,17 +20,19 @@ export type VolumesPair = [string, string];
 export type VolumeOption = Opt<string | VolumesPair>;
 
 export interface DockerOptions {
-  image: string;
-  tag?: Opt<string>;
-  tagScheme?: Opt<string>;
-  tagConstraint?: Opt<string>;
   volumes?: Opt<VolumeOption[]>;
   envVars?: Opt<Opt<string>[]>;
   cwd?: Opt<string>;
 }
 
-export interface RawExecOptions extends ChildProcessExecOptions {
+export interface RawExecOptions extends ChildProcessSpawnOptions {
+  // TODO: to be removed in #16655
+  /**
+   * @deprecated renovate uses utf8, encoding property is ignored.
+   */
   encoding: string;
+  maxBuffer?: number | undefined;
+  cwd?: string;
 }
 
 export interface ExecResult {
@@ -42,10 +46,12 @@ export interface ExecOptions {
   cwd?: string;
   cwdFile?: string;
   env?: Opt<ExtraEnv>;
+  userConfiguredEnv?: UserEnv;
   extraEnv?: Opt<ExtraEnv>;
   docker?: Opt<DockerOptions>;
   toolConstraints?: Opt<ToolConstraint[]>;
   preCommands?: Opt<string[]>;
+  ignoreStdout?: boolean;
   // Following are pass-through to child process
   maxBuffer?: number | undefined;
   timeout?: number | undefined;

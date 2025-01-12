@@ -1,12 +1,12 @@
 import { regEx } from '../../../util/regex';
-import { CdnJsDatasource } from '../../datasource/cdnjs';
+import { CdnjsDatasource } from '../../datasource/cdnjs';
 import { cloudflareUrlRegex } from '../cdnurl/extract';
-import type { PackageDependency, PackageFile } from '../types';
+import type { PackageDependency, PackageFileContent } from '../types';
 
 const regex = regEx(/<\s*(script|link)\s+[^>]*?\/?>/i);
 
 const integrityRegex = regEx(
-  /\s+integrity\s*=\s*("|')(?<currentDigest>[^"']+)/
+  /\s+integrity\s*=\s*("|')(?<currentDigest>[^"']+)/,
 );
 
 export function extractDep(tag: string): PackageDependency | null {
@@ -16,7 +16,7 @@ export function extractDep(tag: string): PackageDependency | null {
   }
   const { depName, currentValue, asset } = match.groups;
   const dep: PackageDependency = {
-    datasource: CdnJsDatasource.id,
+    datasource: CdnjsDatasource.id,
     depName,
     packageName: `${depName}/${asset}`,
     currentValue,
@@ -29,7 +29,7 @@ export function extractDep(tag: string): PackageDependency | null {
   return dep;
 }
 
-export function extractPackageFile(content: string): PackageFile | null {
+export function extractPackageFile(content: string): PackageFileContent | null {
   const deps: PackageDependency[] = [];
   let rest = content;
   let match = regex.exec(rest);

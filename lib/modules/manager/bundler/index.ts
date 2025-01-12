@@ -1,13 +1,11 @@
-import { ProgrammingLanguage } from '../../../constants';
+import type { Category } from '../../../constants';
 import { RubyVersionDatasource } from '../../datasource/ruby-version';
-import { RubyGemsDatasource } from '../../datasource/rubygems';
+import { RubygemsDatasource } from '../../datasource/rubygems';
 import * as rubyVersioning from '../../versioning/ruby';
 import { updateArtifacts } from './artifacts';
 import { extractPackageFile } from './extract';
-import { getRangeStrategy } from './range';
 import { updateLockedDependency } from './update-locked';
 
-const language = ProgrammingLanguage.Ruby;
 export const supportsLockFileMaintenance = true;
 
 /*
@@ -18,10 +16,11 @@ export const supportsLockFileMaintenance = true;
 export {
   extractPackageFile, // Mandatory unless extractAllPackageFiles is used instead
   updateArtifacts, // Optional
-  getRangeStrategy, // Optional
-  language, // Optional
   updateLockedDependency,
 };
+
+export const url = 'https://bundler.io/docs.html';
+export const categories: Category[] = ['ruby'];
 
 export const defaultConfig = {
   fileMatch: ['(^|/)Gemfile$'],
@@ -29,6 +28,6 @@ export const defaultConfig = {
 };
 
 export const supportedDatasources = [
-  RubyGemsDatasource.id,
+  RubygemsDatasource.id,
   RubyVersionDatasource.id,
 ];

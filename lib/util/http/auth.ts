@@ -1,23 +1,48 @@
 import is from '@sindresorhus/is';
 import type { Options } from 'got';
 import {
+  GITEA_API_USING_HOST_TYPES,
   GITHUB_API_USING_HOST_TYPES,
   GITLAB_API_USING_HOST_TYPES,
-  PlatformId,
 } from '../../constants';
 import type { GotOptions } from './types';
 
-export function applyAuthorization(inOptions: GotOptions): GotOptions {
+export type AuthGotOptions = Pick<
+  GotOptions,
+  | 'hostType'
+  | 'headers'
+  | 'noAuth'
+  | 'context'
+  | 'token'
+  | 'username'
+  | 'password'
+>;
+
+export function applyAuthorization<GotOptions extends AuthGotOptions>(
+  inOptions: GotOptions,
+): GotOptions {
   const options: GotOptions = { ...inOptions };
 
-  if (options.headers?.authorization || options.noAuth) {
+  if (is.nonEmptyString(options.headers?.authorization) || options.noAuth) {
     return options;
   }
 
   options.headers ??= {};
   if (options.token) {
-    if (options.hostType === PlatformId.Gitea) {
-      options.headers.authorization = `token ${options.token}`;
+    const authType = options.context?.authType;
+    if (authType) {
+      if (authType === 'Token-Only') {
+        options.headers.authorization = options.token;
+      } else {
+        options.headers.authorization = `${authType} ${options.token}`;
+      }
+    } else if (
+      options.hostType &&
+      GITEA_API_USING_HOST_TYPES.includes(options.hostType)
+    ) {
+      // Gitea v1.8.0 and later support `Bearer` as alternate to `token`
+      // https://github.com/go-gitea/gitea/pull/5378
+      options.headers.authorization = `Bearer ${options.token}`;
     } else if (
       options.hostType &&
       GITHUB_API_USING_HOST_TYPES.includes(options.hostType)
@@ -29,7 +54,7 @@ export function applyAuthorization(inOptions: GotOptions): GotOptions {
         if (is.string(options.headers.accept)) {
           options.headers.accept = options.headers.accept.replace(
             'application/vnd.github.v3+json',
-            'application/vnd.github.machine-man-preview+json'
+            'application/vnd.github.machine-man-preview+json',
           );
         }
       }
@@ -45,20 +70,13 @@ export function applyAuthorization(inOptions: GotOptions): GotOptions {
         options.headers.authorization = `Bearer ${options.token}`;
       }
     } else {
-      // Custom Auth type, eg `Basic XXXX_TOKEN`
-      const type = options.context?.authType ?? 'Bearer';
-
-      if (type === 'Token-Only') {
-        options.headers.authorization = options.token;
-      } else {
-        options.headers.authorization = `${type} ${options.token}`;
-      }
+      options.headers.authorization = `Bearer ${options.token}`;
     }
     delete options.token;
   } else if (options.password !== undefined) {
     // Otherwise got will add username and password to url and header
     const auth = Buffer.from(
-      `${options.username ?? ''}:${options.password}`
+      `${options.username ?? ''}:${options.password}`,
     ).toString('base64');
     options.headers.authorization = `Basic ${auth}`;
     delete options.username;

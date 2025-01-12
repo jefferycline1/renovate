@@ -1,3 +1,4 @@
+import { logger } from '../../../logger';
 import { cache } from '../../../util/cache/package/decorator';
 import { regEx } from '../../../util/regex';
 import type { DigestConfig, GetReleasesConfig, ReleaseResult } from '../types';
@@ -16,6 +17,10 @@ export class GitRefsDatasource extends GitDatasource {
 
   override readonly customRegistrySupport = false;
 
+  override readonly sourceUrlSupport = 'package';
+  override readonly sourceUrlNote =
+    'The source URL is determined by using the `packageName` and `registryUrl`.';
+
   @cache({
     namespace: `datasource-${GitRefsDatasource.id}`,
     key: ({ packageName }: GetReleasesConfig) => packageName,
@@ -23,7 +28,13 @@ export class GitRefsDatasource extends GitDatasource {
   override async getReleases({
     packageName,
   }: GetReleasesConfig): Promise<ReleaseResult | null> {
-    const rawRefs: RawRefs[] | null = await this.getRawRefs({ packageName });
+    let rawRefs: RawRefs[] | null = null;
+
+    try {
+      rawRefs = await this.getRawRefs({ packageName });
+    } catch (err) /* istanbul ignore next */ {
+      logger.debug({ err }, 'Error getting git-refs');
+    }
 
     if (!rawRefs) {
       return null;
@@ -53,7 +64,7 @@ export class GitRefsDatasource extends GitDatasource {
 
   override async getDigest(
     { packageName }: DigestConfig,
-    newValue?: string
+    newValue?: string,
   ): Promise<string | null> {
     const rawRefs: RawRefs[] | null = await this.getRawRefs({ packageName });
 
@@ -66,11 +77,11 @@ export class GitRefsDatasource extends GitDatasource {
     if (newValue) {
       ref = rawRefs.find(
         (rawRef) =>
-          ['heads', 'tags'].includes(rawRef.type) && rawRef.value === newValue
+          ['heads', 'tags'].includes(rawRef.type) && rawRef.value === newValue,
       );
     } else {
       ref = rawRefs.find(
-        (rawRef) => rawRef.type === '' && rawRef.value === 'HEAD'
+        (rawRef) => rawRef.type === '' && rawRef.value === 'HEAD',
       );
     }
     if (ref) {

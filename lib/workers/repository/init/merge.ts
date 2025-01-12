@@ -1,12 +1,10 @@
 import is from '@sindresorhus/is';
-import jsonValidator from 'json-dup-key-validator';
-import JSON5 from 'json5';
-import upath from 'upath';
 import { mergeChildConfig } from '../../../config';
 import { configFileNames } from '../../../config/app-strings';
 import { decryptConfig } from '../../../config/decrypt';
 import { migrateAndValidate } from '../../../config/migrate-validate';
 import { migrateConfig } from '../../../config/migration';
+import { parseFileConfig } from '../../../config/parse';
 import * as presets from '../../../config/presets';
 import { applySecretsToConfig } from '../../../config/secrets';
 import type { RenovateConfig } from '../../../config/types';
@@ -17,60 +15,107 @@ import {
 import { logger } from '../../../logger';
 import * as npmApi from '../../../modules/datasource/npm';
 import { platform } from '../../../modules/platform';
+import { scm } from '../../../modules/platform/scm';
+import { ExternalHostError } from '../../../types/errors/external-host-error';
 import { getCache } from '../../../util/cache/repository';
+import { parseJson } from '../../../util/common';
 import { readLocalFile } from '../../../util/fs';
-import { getFileList } from '../../../util/git';
 import * as hostRules from '../../../util/host-rules';
+import * as queue from '../../../util/http/queue';
+import * as throttle from '../../../util/http/throttle';
+import { maskToken } from '../../../util/mask';
+import { regEx } from '../../../util/regex';
+import { getOnboardingConfig } from '../onboarding/branch/config';
+import { getDefaultConfigFileName } from '../onboarding/branch/create';
+import {
+  getOnboardingConfigFromCache,
+  getOnboardingFileNameFromCache,
+  setOnboardingConfigDetails,
+} from '../onboarding/branch/onboarding-branch-cache';
+import { OnboardingState } from '../onboarding/common';
 import type { RepoFileConfig } from './types';
+
+export async function detectConfigFile(): Promise<string | null> {
+  const fileList = await scm.getFileList();
+  for (const fileName of configFileNames) {
+    if (fileName === 'package.json') {
+      try {
+        const pJson = JSON.parse(
+          (await readLocalFile('package.json', 'utf8'))!,
+        );
+        if (pJson.renovate) {
+          logger.warn(
+            'Using package.json for Renovate config is deprecated - please use a dedicated configuration file instead',
+          );
+          return 'package.json';
+        }
+      } catch {
+        // Do nothing
+      }
+    } else if (fileList.includes(fileName)) {
+      return fileName;
+    }
+  }
+  return null;
+}
 
 export async function detectRepoFileConfig(): Promise<RepoFileConfig> {
   const cache = getCache();
   let { configFileName } = cache;
-  if (configFileName) {
-    let configFileParsed = (await platform.getJsonFile(configFileName))!;
-    if (configFileParsed) {
+  if (is.nonEmptyString(configFileName)) {
+    let configFileRaw: string | null;
+    try {
+      configFileRaw = await platform.getRawFile(configFileName);
+    } catch (err) {
+      // istanbul ignore if
+      if (err instanceof ExternalHostError) {
+        throw err;
+      }
+      configFileRaw = null;
+    }
+    if (configFileRaw) {
+      let configFileParsed = parseJson(configFileRaw, configFileName) as any;
       if (configFileName === 'package.json') {
         configFileParsed = configFileParsed.renovate;
       }
       return { configFileName, configFileParsed };
+    } else {
+      logger.debug('Existing config file no longer exists');
+      delete cache.configFileName;
     }
-    logger.debug('Existing config file no longer exists');
   }
-  const fileList = await getFileList();
-  async function detectConfigFile(): Promise<string | null> {
-    for (const fileName of configFileNames) {
-      if (fileName === 'package.json') {
-        try {
-          const pJson = JSON.parse(
-            (await readLocalFile('package.json', 'utf8'))!
-          );
-          if (pJson.renovate) {
-            logger.debug('Using package.json for global renovate config');
-            return 'package.json';
-          }
-        } catch (err) {
-          // Do nothing
-        }
-      } else if (fileList.includes(fileName)) {
-        return fileName;
-      }
-    }
-    return null;
+
+  if (OnboardingState.onboardingCacheValid) {
+    configFileName = getOnboardingFileNameFromCache();
+  } else {
+    configFileName = (await detectConfigFile()) ?? undefined;
   }
-  configFileName = (await detectConfigFile()) ?? undefined;
+
   if (!configFileName) {
     logger.debug('No renovate config file found');
+    cache.configFileName = '';
     return {};
   }
   cache.configFileName = configFileName;
   logger.debug(`Found ${configFileName} config file`);
-  // TODO #7154
+  // TODO #22198
   let configFileParsed: any;
+  let configFileRaw: string | undefined | null;
+
+  if (OnboardingState.onboardingCacheValid) {
+    const cachedConfig = getOnboardingConfigFromCache();
+    const parsedConfig = cachedConfig ? JSON.parse(cachedConfig) : undefined;
+    if (parsedConfig) {
+      setOnboardingConfigDetails(configFileName, JSON.stringify(parsedConfig));
+      return { configFileName, configFileParsed: parsedConfig };
+    }
+  }
+
   if (configFileName === 'package.json') {
     // We already know it parses
     configFileParsed = JSON.parse(
-      // TODO #7154
-      (await readLocalFile('package.json', 'utf8'))!
+      // TODO #22198
+      (await readLocalFile('package.json', 'utf8'))!,
     ).renovate;
     if (is.string(configFileParsed)) {
       logger.debug('Massaging string renovate config to extends array');
@@ -78,81 +123,36 @@ export async function detectRepoFileConfig(): Promise<RepoFileConfig> {
     }
     logger.debug({ config: configFileParsed }, 'package.json>renovate config');
   } else {
-    let rawFileContents = await readLocalFile(configFileName, 'utf8');
+    configFileRaw = await readLocalFile(configFileName, 'utf8');
     // istanbul ignore if
-    if (!is.string(rawFileContents)) {
+    if (!is.string(configFileRaw)) {
       logger.warn({ configFileName }, 'Null contents when reading config file');
       throw new Error(REPOSITORY_CHANGED);
     }
     // istanbul ignore if
-    if (!rawFileContents.length) {
-      rawFileContents = '{}';
+    if (!configFileRaw.length) {
+      configFileRaw = '{}';
     }
 
-    const fileType = upath.extname(configFileName);
+    const parseResult = parseFileConfig(configFileName, configFileRaw);
 
-    if (fileType === '.json5') {
-      try {
-        configFileParsed = JSON5.parse(rawFileContents);
-      } catch (err) /* istanbul ignore next */ {
-        logger.debug(
-          { renovateConfig: rawFileContents },
-          'Error parsing renovate config renovate.json5'
-        );
-        const validationError = 'Invalid JSON5 (parsing failed)';
-        const validationMessage = `JSON5.parse error:  ${String(err.message)}`;
-        return {
-          configFileName,
-          configFileParseError: { validationError, validationMessage },
-        };
-      }
-    } else {
-      let allowDuplicateKeys = true;
-      let jsonValidationError = jsonValidator.validate(
-        rawFileContents,
-        allowDuplicateKeys
-      );
-      if (jsonValidationError) {
-        const validationError = 'Invalid JSON (parsing failed)';
-        const validationMessage = jsonValidationError;
-        return {
-          configFileName,
-          configFileParseError: { validationError, validationMessage },
-        };
-      }
-      allowDuplicateKeys = false;
-      jsonValidationError = jsonValidator.validate(
-        rawFileContents,
-        allowDuplicateKeys
-      );
-      if (jsonValidationError) {
-        const validationError = 'Duplicate keys in JSON';
-        const validationMessage = JSON.stringify(jsonValidationError);
-        return {
-          configFileName,
-          configFileParseError: { validationError, validationMessage },
-        };
-      }
-      try {
-        configFileParsed = JSON5.parse(rawFileContents);
-      } catch (err) /* istanbul ignore next */ {
-        logger.debug(
-          { renovateConfig: rawFileContents },
-          'Error parsing renovate config'
-        );
-        const validationError = 'Invalid JSON (parsing failed)';
-        const validationMessage = `JSON.parse error:  ${String(err.message)}`;
-        return {
-          configFileName,
-          configFileParseError: { validationError, validationMessage },
-        };
-      }
+    if (!parseResult.success) {
+      return {
+        configFileName,
+        configFileParseError: {
+          validationError: parseResult.validationError,
+          validationMessage: parseResult.validationMessage,
+        },
+      };
     }
+    configFileParsed = parseResult.parsedContents;
     logger.debug(
       { fileName: configFileName, config: configFileParsed },
-      'Repository config'
+      'Repository config',
     );
   }
+
+  setOnboardingConfigDetails(configFileName, JSON.stringify(configFileParsed));
   return { configFileName, configFileParsed };
 }
 
@@ -169,12 +169,22 @@ export function checkForRepoConfigError(repoConfig: RepoFileConfig): void {
 
 // Check for repository config
 export async function mergeRenovateConfig(
-  config: RenovateConfig
+  config: RenovateConfig,
 ): Promise<RenovateConfig> {
   let returnConfig = { ...config };
   let repoConfig: RepoFileConfig = {};
   if (config.requireConfig !== 'ignored') {
     repoConfig = await detectRepoFileConfig();
+  }
+  if (!repoConfig.configFileParsed && config.mode === 'silent') {
+    logger.debug(
+      'When mode=silent and repo has no config file, we use the onboarding config as repo config',
+    );
+    const configFileName = getDefaultConfigFileName(config);
+    repoConfig = {
+      configFileName,
+      configFileParsed: await getOnboardingConfig(config),
+    };
   }
   const configFileParsed = repoConfig?.configFileParsed || {};
   if (is.nonEmptyArray(returnConfig.extends)) {
@@ -204,11 +214,11 @@ export async function mergeRenovateConfig(
   }
   delete migratedConfig.errors;
   delete migratedConfig.warnings;
-  logger.debug({ config: migratedConfig }, 'migrated config');
-  // TODO #7154
+  // TODO #22198
   const repository = config.repository!;
   // Decrypt before resolving in case we need npm authentication for any presets
   const decryptedConfig = await decryptConfig(migratedConfig, repository);
+  setNpmTokenInNpmrc(decryptedConfig);
   // istanbul ignore if
   if (is.string(decryptedConfig.npmrc)) {
     logger.debug('Found npmrc in decrypted config - setting');
@@ -216,8 +226,12 @@ export async function mergeRenovateConfig(
   }
   // Decrypt after resolving in case the preset contains npm authentication instead
   let resolvedConfig = await decryptConfig(
-    await presets.resolveConfigPresets(decryptedConfig, config),
-    repository
+    await presets.resolveConfigPresets(
+      decryptedConfig,
+      config,
+      config.ignorePresets,
+    ),
+    repository,
   );
   logger.trace({ config: resolvedConfig }, 'resolved config');
   const migrationResult = migrateConfig(resolvedConfig);
@@ -226,16 +240,17 @@ export async function mergeRenovateConfig(
     logger.trace({ config: resolvedConfig }, 'resolved config after migrating');
     resolvedConfig = migrationResult.migratedConfig;
   }
+  setNpmTokenInNpmrc(resolvedConfig);
   // istanbul ignore if
   if (is.string(resolvedConfig.npmrc)) {
     logger.debug(
-      'Ignoring any .npmrc files in repository due to configured npmrc'
+      'Ignoring any .npmrc files in repository due to configured npmrc',
     );
     npmApi.setNpmrc(resolvedConfig.npmrc);
   }
   resolvedConfig = applySecretsToConfig(
     resolvedConfig,
-    mergeChildConfig(config.secrets ?? {}, resolvedConfig.secrets ?? {})
+    mergeChildConfig(config.secrets ?? {}, resolvedConfig.secrets ?? {}),
   );
   // istanbul ignore if
   if (resolvedConfig.hostRules) {
@@ -246,10 +261,13 @@ export async function mergeRenovateConfig(
       } catch (err) {
         logger.warn(
           { err, config: rule },
-          'Error setting hostRule from config'
+          'Error setting hostRule from config',
         );
       }
     }
+    // host rules can change concurrency
+    queue.clear();
+    throttle.clear();
     delete resolvedConfig.hostRules;
   }
   returnConfig = mergeChildConfig(returnConfig, resolvedConfig);
@@ -259,8 +277,38 @@ export async function mergeRenovateConfig(
   if (returnConfig.ignorePaths?.length) {
     logger.debug(
       { ignorePaths: returnConfig.ignorePaths },
-      `Found repo ignorePaths`
+      `Found repo ignorePaths`,
     );
   }
   return returnConfig;
+}
+
+/** needed when using portal secrets for npmToken */
+export function setNpmTokenInNpmrc(config: RenovateConfig): void {
+  if (!is.string(config.npmToken)) {
+    return;
+  }
+
+  const token = config.npmToken;
+  logger.debug({ npmToken: maskToken(token) }, 'Migrating npmToken to npmrc');
+
+  if (!is.string(config.npmrc)) {
+    logger.debug('Adding npmrc to config');
+    config.npmrc = `//registry.npmjs.org/:_authToken=${token}\n`;
+    delete config.npmToken;
+    return;
+  }
+
+  if (config.npmrc.includes(`\${NPM_TOKEN}`)) {
+    logger.debug(`Replacing \${NPM_TOKEN} with npmToken`);
+    config.npmrc = config.npmrc.replace(regEx(/\${NPM_TOKEN}/g), token);
+  } else {
+    logger.debug('Appending _authToken= to end of existing npmrc');
+    config.npmrc = config.npmrc.replace(
+      regEx(/\n?$/),
+      `\n_authToken=${token}\n`,
+    );
+  }
+
+  delete config.npmToken;
 }

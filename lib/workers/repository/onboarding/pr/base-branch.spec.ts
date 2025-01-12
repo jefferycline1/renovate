@@ -1,5 +1,5 @@
-import { RenovateConfig, getConfig } from '../../../../../test/util';
-
+import type { RenovateConfig } from '../../../../../test/util';
+import { partial } from '../../../../../test/util';
 import { getBaseBranchDesc } from './base-branch';
 
 describe('workers/repository/onboarding/pr/base-branch', () => {
@@ -7,8 +7,7 @@ describe('workers/repository/onboarding/pr/base-branch', () => {
     let config: RenovateConfig;
 
     beforeEach(() => {
-      jest.resetAllMocks();
-      config = getConfig();
+      config = partial<RenovateConfig>();
     });
 
     it('returns empty if no baseBranch', () => {
@@ -20,7 +19,7 @@ describe('workers/repository/onboarding/pr/base-branch', () => {
       config.baseBranches = ['some-branch'];
       const res = getBaseBranchDesc(config);
       expect(res.trim()).toBe(
-        'You have configured Renovate to use branch `some-branch` as base branch.'
+        'You have configured Renovate to use branch `some-branch` as base branch.',
       );
     });
 
@@ -28,7 +27,7 @@ describe('workers/repository/onboarding/pr/base-branch', () => {
       config.baseBranches = ['some-branch', 'some-other-branch'];
       const res = getBaseBranchDesc(config);
       expect(res.trim()).toBe(
-        'You have configured Renovate to use the following baseBranches: `some-branch`, `some-other-branch`.'
+        'You have configured Renovate to use the following baseBranches: `some-branch`, `some-other-branch`.',
       );
     });
   });

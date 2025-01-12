@@ -1,15 +1,17 @@
-import { ProgrammingLanguage } from '../../../constants';
+import type { Category } from '../../../constants';
 import { PypiDatasource } from '../../datasource/pypi';
 import { id as versioning } from '../../versioning/pep440';
 
 export { extractPackageFile } from './extract';
-export { getRangeStrategy } from './range';
 
-export const supportedDatasources = [PypiDatasource.id];
-
-export const language = ProgrammingLanguage.Python;
+export const displayName = 'Setuptools (setup.cfg)';
+export const url =
+  'https://setuptools.pypa.io/en/latest/userguide/declarative_config.html';
+export const categories: Category[] = ['python'];
 
 export const defaultConfig = {
   fileMatch: ['(^|/)setup\\.cfg$'],
   versioning,
 };
+
+export const supportedDatasources = [PypiDatasource.id];

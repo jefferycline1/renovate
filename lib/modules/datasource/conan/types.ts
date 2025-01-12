@@ -1,7 +1,4 @@
-export interface ConanJSON {
-  results?: Record<string, string>;
-}
-
-export interface ConanYAML {
-  versions?: Record<string, unknown>;
+export interface ConanPackage {
+  conanName: string;
+  userAndChannel: string;
 }

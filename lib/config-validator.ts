@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 // istanbul ignore file
+import 'source-map-support/register';
+import './punycode.cjs';
 import { dequal } from 'dequal';
 import { pathExists, readFile } from 'fs-extra';
 import { configFileNames } from './config/app-strings';
@@ -15,12 +17,12 @@ import {
 
 let returnVal = 0;
 
-/* eslint-disable no-console */
-
 async function validate(
+  configType: 'global' | 'repo',
   desc: string,
   config: RenovateConfig,
-  isPreset = false
+  strict: boolean,
+  isPreset = false,
 ): Promise<void> {
   const { isMigrated, migratedConfig } = migrateConfig(config);
   if (isMigrated) {
@@ -29,17 +31,26 @@ async function validate(
         oldConfig: config,
         newConfig: migratedConfig,
       },
-      'Config migration necessary'
+      'Config migration necessary',
     );
+    if (strict) {
+      returnVal = 1;
+    }
   }
   const massagedConfig = massageConfig(migratedConfig);
-  const res = await validateConfig(massagedConfig, isPreset);
+  const res = await validateConfig(configType, massagedConfig, isPreset);
   if (res.errors.length) {
-    logger.error({ errors: res.errors }, `${desc} contains errors`);
+    logger.error(
+      { file: desc, errors: res.errors },
+      'Found errors in configuration',
+    );
     returnVal = 1;
   }
   if (res.warnings.length) {
-    logger.warn({ warnings: res.warnings }, `${desc} contains warnings`);
+    logger.warn(
+      { file: desc, warnings: res.warnings },
+      'Found errors in configuration',
+    );
     returnVal = 1;
   }
 }
@@ -50,63 +61,103 @@ type PackageJson = {
 };
 
 (async () => {
-  for (const file of configFileNames.filter(
-    (name) => name !== 'package.json'
-  )) {
+  const strictArgIndex = process.argv.indexOf('--strict');
+  const strict = strictArgIndex >= 0;
+  if (strict) {
+    process.argv.splice(strictArgIndex, 1);
+  }
+  if (process.argv.length > 2) {
+    for (const file of process.argv.slice(2)) {
+      try {
+        if (!(await pathExists(file))) {
+          returnVal = 1;
+          logger.error({ file }, 'File does not exist');
+          break;
+        }
+        const parsedContent = await getParsedContent(file);
+        try {
+          logger.info(`Validating ${file}`);
+          await validate('global', file, parsedContent, strict);
+        } catch (err) {
+          logger.warn({ file, err }, 'File is not valid Renovate config');
+          returnVal = 1;
+        }
+      } catch (err) {
+        logger.warn({ file, err }, 'File could not be parsed');
+        returnVal = 1;
+      }
+    }
+  } else {
+    for (const file of configFileNames.filter(
+      (name) => name !== 'package.json',
+    )) {
+      try {
+        if (!(await pathExists(file))) {
+          continue;
+        }
+        const parsedContent = await getParsedContent(file);
+        try {
+          logger.info(`Validating ${file}`);
+          await validate('repo', file, parsedContent, strict);
+        } catch (err) {
+          logger.warn({ file, err }, 'File is not valid Renovate config');
+          returnVal = 1;
+        }
+      } catch (err) {
+        logger.warn({ file, err }, 'File could not be parsed');
+        returnVal = 1;
+      }
+    }
     try {
-      if (!(await pathExists(file))) {
-        continue;
+      const pkgJson = JSON.parse(
+        await readFile('package.json', 'utf8'),
+      ) as PackageJson;
+      if (pkgJson.renovate) {
+        logger.info(`Validating package.json > renovate`);
+        await validate(
+          'repo',
+          'package.json > renovate',
+          pkgJson.renovate,
+          strict,
+        );
       }
-      const parsedContent = await getParsedContent(file);
-      try {
+      if (pkgJson['renovate-config']) {
+        logger.info(`Validating package.json > renovate-config`);
+        for (const presetConfig of Object.values(pkgJson['renovate-config'])) {
+          await validate(
+            'repo',
+            'package.json > renovate-config',
+            presetConfig,
+            strict,
+            true,
+          );
+        }
+      }
+    } catch {
+      // ignore
+    }
+    try {
+      const fileConfig = await getFileConfig(process.env);
+      if (!dequal(fileConfig, {})) {
+        const file = process.env.RENOVATE_CONFIG_FILE ?? 'config.js';
         logger.info(`Validating ${file}`);
-        await validate(file, parsedContent);
-      } catch (err) {
-        logger.warn({ err }, `${file} is not valid Renovate config`);
-        returnVal = 1;
+        try {
+          await validate('global', file, fileConfig, strict);
+        } catch (err) {
+          logger.error({ file, err }, 'File is not valid Renovate config');
+          returnVal = 1;
+        }
       }
-    } catch (err) {
-      logger.warn({ err }, `${file} could not be parsed`);
-      returnVal = 1;
+    } catch {
+      // ignore
     }
-  }
-  try {
-    const pkgJson = JSON.parse(
-      await readFile('package.json', 'utf8')
-    ) as PackageJson;
-    if (pkgJson.renovate) {
-      logger.info(`Validating package.json > renovate`);
-      await validate('package.json > renovate', pkgJson.renovate);
-    }
-    if (pkgJson['renovate-config']) {
-      logger.info(`Validating package.json > renovate-config`);
-      for (const presetConfig of Object.values(pkgJson['renovate-config'])) {
-        await validate('package.json > renovate-config', presetConfig, true);
-      }
-    }
-  } catch (err) {
-    // ignore
-  }
-  try {
-    const fileConfig = await getFileConfig(process.env);
-    if (!dequal(fileConfig, {})) {
-      const file = process.env.RENOVATE_CONFIG_FILE ?? 'config.js';
-      logger.info(`Validating ${file}`);
-      try {
-        await validate(file, fileConfig);
-      } catch (err) {
-        logger.error({ err }, `${file} is not valid Renovate config`);
-        returnVal = 1;
-      }
-    }
-  } catch (err) {
-    // ignore
   }
   if (returnVal !== 0) {
     process.exit(returnVal);
   }
   logger.info('Config validated successfully');
 })().catch((e) => {
+  // eslint-disable-next-line no-console
   console.error(e);
   process.exit(99);
 });

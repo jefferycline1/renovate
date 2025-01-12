@@ -1,4 +1,4 @@
-import os from 'os';
+import os from 'node:os';
 import is from '@sindresorhus/is';
 import upath from 'upath';
 import { logger } from '../../../logger';
@@ -16,7 +16,7 @@ export async function detectGlobalConfig(): Promise<GlobalManagerConfig> {
       res.npmrcMerge = true;
       logger.debug(`Detected ${npmrcFileName} and adding it to global config`);
     }
-  } catch (err) {
+  } catch {
     logger.warn({ npmrcFileName }, 'Error reading .npmrc file');
   }
   return res;

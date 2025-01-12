@@ -2,22 +2,15 @@ import * as httpMock from '../../../../test/http-mock';
 import { GlobalConfig } from '../../global';
 import * as npm from '.';
 
-jest.mock('delay');
-
 describe('config/presets/npm/index', () => {
   beforeEach(() => {
-    jest.resetAllMocks();
     GlobalConfig.reset();
-  });
-
-  afterEach(() => {
-    delete process.env.RENOVATE_CACHE_NPM_MINUTES;
   });
 
   it('should throw if no package', async () => {
     httpMock.scope('https://registry.npmjs.org').get('/nopackage').reply(404);
     await expect(
-      npm.getPreset({ repo: 'nopackage', presetName: 'default' })
+      npm.getPreset({ repo: 'nopackage', presetName: 'default' }),
     ).rejects.toThrow(/dep not found/);
   });
 
@@ -50,7 +43,7 @@ describe('config/presets/npm/index', () => {
       .get('/norenovateconfig')
       .reply(200, presetPackage);
     await expect(
-      npm.getPreset({ repo: 'norenovateconfig', presetName: 'default' })
+      npm.getPreset({ repo: 'norenovateconfig', presetName: 'default' }),
     ).rejects.toThrow(/preset renovate-config not found/);
   });
 
@@ -87,7 +80,7 @@ describe('config/presets/npm/index', () => {
       npm.getPreset({
         repo: 'presetnamenotfound',
         presetName: 'missing',
-      })
+      }),
     ).rejects.toThrow(/preset not found/);
   });
 

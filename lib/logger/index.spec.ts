@@ -1,6 +1,10 @@
-import _fs from 'fs-extra';
+import type { WriteStream } from 'node:fs';
+import bunyan from 'bunyan';
+import fs from 'fs-extra';
+import { partial } from '../../test/util';
 import { add } from '../util/host-rules';
 import { addSecretForSanitizing as addSecret } from '../util/sanitize';
+import type { RenovateLogger } from './renovate-logger';
 import {
   addMeta,
   addStream,
@@ -8,25 +12,45 @@ import {
   getContext,
   getProblems,
   levels,
+  logLevel,
   logger,
   removeMeta,
   setContext,
   setMeta,
 } from '.';
 
-jest.unmock('.');
+const initialContext = 'initial_context';
 
-jest.mock('fs-extra');
-const fs: any = _fs;
+jest.unmock('.');
+jest.mock('nanoid', () => ({
+  nanoid: () => 'initial_context',
+}));
+
+const bunyanDebugSpy = jest.spyOn(bunyan.prototype, 'debug');
 
 describe('logger/index', () => {
   it('inits', () => {
     expect(logger).toBeDefined();
   });
 
+  it('uses an auto-generated log context', () => {
+    logger.debug('');
+
+    expect(bunyanDebugSpy).toHaveBeenCalledWith(
+      { logContext: initialContext },
+      '',
+    );
+  });
+
   it('sets and gets context', () => {
-    setContext('123test');
-    expect(getContext()).toBe('123test');
+    const logContext = '123test';
+    const msg = 'test';
+    setContext(logContext);
+
+    logger.debug(msg);
+
+    expect(getContext()).toBe(logContext);
+    expect(bunyanDebugSpy).toHaveBeenCalledWith({ logContext }, msg);
   });
 
   it('supports logging with metadata', () => {
@@ -41,31 +65,94 @@ describe('logger/index', () => {
     expect(() => logger.debug('some meta')).not.toThrow();
   });
 
-  it('sets meta', () => {
-    expect(() => setMeta({ any: 'test' })).not.toThrow();
-  });
+  describe('meta functions', () => {
+    beforeEach(() => {
+      setContext(initialContext);
+    });
 
-  it('adds meta', () => {
-    expect(() => addMeta({ new: 'test' })).not.toThrow();
-  });
+    it('sets meta', () => {
+      const logMeta = { foo: 'foo' };
+      const meta = { bar: 'bar' };
+      setMeta(meta);
 
-  it('removes meta', () => {
-    expect(() => removeMeta(['new'])).not.toThrow();
+      logger.debug(logMeta, '');
+
+      expect(bunyanDebugSpy).toHaveBeenCalledWith(
+        { logContext: initialContext, ...meta, ...logMeta },
+        '',
+      );
+      expect(bunyanDebugSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('adds meta', () => {
+      const logMeta = { foo: 'foo' };
+      const meta = { bar: 'bar' };
+      addMeta(meta);
+
+      logger.debug(logMeta, '');
+
+      expect(bunyanDebugSpy).toHaveBeenCalledWith(
+        { logContext: initialContext, ...meta, ...logMeta },
+        '',
+      );
+      expect(bunyanDebugSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('removes meta', () => {
+      const logMeta = { foo: 'foo' };
+      const meta = { bar: 'bar' };
+      setMeta(meta);
+
+      logger.debug(logMeta, '');
+
+      expect(bunyanDebugSpy).toHaveBeenCalledWith(
+        { logContext: initialContext, ...meta, ...logMeta },
+        '',
+      );
+      expect(bunyanDebugSpy).toHaveBeenCalledTimes(1);
+
+      removeMeta(Object.keys(meta));
+
+      logger.debug(logMeta, '');
+
+      expect(bunyanDebugSpy).toHaveBeenCalledWith(
+        { logContext: initialContext, ...logMeta },
+        '',
+      );
+      expect(bunyanDebugSpy).toHaveBeenCalledTimes(2);
+    });
   });
 
   it('sets level', () => {
+    expect(logLevel()).toBeDefined(); // depends on passed env
     expect(() => levels('stdout', 'debug')).not.toThrow();
+    expect(logLevel()).toBe('debug');
+  });
+
+  it('should create a child logger', () => {
+    const childLogger = (logger as RenovateLogger).childLogger();
+    const loggerSpy = jest.spyOn(logger, 'debug');
+    const childLoggerSpy = jest.spyOn(childLogger, 'debug');
+
+    childLogger.debug('test');
+
+    expect(loggerSpy).toHaveBeenCalledTimes(0);
+    expect(childLoggerSpy).toHaveBeenCalledTimes(1);
+    expect(childLoggerSpy).toHaveBeenCalledWith('test');
   });
 
   it('saves problems', () => {
     addSecret('p4$$w0rd');
     levels('stdout', 'fatal');
+    logger.fatal('fatal error');
     logger.error('some meta');
     logger.error({ some: 'meta', password: 'super secret' });
     logger.error({ some: 'meta' }, 'message');
     logger.warn('a warning with a p4$$w0rd');
+    logger.trace('ignored');
     logger.info('ignored');
-    expect(getProblems()).toMatchSnapshot([
+    expect(getProblems()).toMatchObject([
+      { msg: 'fatal error' },
       { msg: 'some meta' },
       { some: 'meta', password: '***********' },
       { some: 'meta', msg: 'message' },
@@ -80,7 +167,7 @@ describe('logger/index', () => {
       addStream({
         name: 'logfile',
         level: 'error',
-      })
+      }),
     ).toThrow("Missing 'stream' or 'path' for bunyan stream");
   });
 
@@ -91,18 +178,21 @@ describe('logger/index', () => {
         path: 'file.log',
         level: 'error',
         type: 'rotating-file',
-      })
+      }),
     ).toThrow("Rotating files aren't supported");
   });
 
   it('supports file-based logging', () => {
     let chunk = '';
-    fs.createWriteStream.mockReturnValueOnce({
-      writable: true,
-      write(x: string) {
-        chunk = x;
-      },
-    });
+    jest.spyOn(fs, 'createWriteStream').mockReturnValueOnce(
+      partial<WriteStream>({
+        writable: true,
+        write(x: string): boolean {
+          chunk = x;
+          return true;
+        },
+      }),
+    );
 
     addStream({
       name: 'logfile',
@@ -117,12 +207,15 @@ describe('logger/index', () => {
 
   it('handles cycles', () => {
     let logged: Record<string, any> = {};
-    fs.createWriteStream.mockReturnValueOnce({
-      writable: true,
-      write(x: string) {
-        logged = JSON.parse(x);
-      },
-    });
+    jest.spyOn(fs, 'createWriteStream').mockReturnValueOnce(
+      partial<WriteStream>({
+        writable: true,
+        write(x: string): boolean {
+          logged = JSON.parse(x);
+          return true;
+        },
+      }),
+    );
 
     addStream({
       name: 'logfile',
@@ -142,12 +235,15 @@ describe('logger/index', () => {
 
   it('sanitizes secrets', () => {
     let logged: Record<string, any> = {};
-    fs.createWriteStream.mockReturnValueOnce({
-      writable: true,
-      write(x: string) {
-        logged = JSON.parse(x);
-      },
-    });
+    jest.spyOn(fs, 'createWriteStream').mockReturnValueOnce(
+      partial<WriteStream>({
+        writable: true,
+        write(x: string): boolean {
+          logged = JSON.parse(x);
+          return true;
+        },
+      }),
+    );
 
     addStream({
       name: 'logfile',

@@ -1,11 +1,6 @@
 import { logger } from '../../logger';
 
-// eslint-disable-next-line typescript-enum/no-enum
-export enum Limit {
-  Commits = 'Commits',
-  PullRequests = 'PullRequests',
-  Branches = 'Branches',
-}
+export type Limit = 'Commits' | 'PullRequests' | 'Branches';
 
 interface LimitValue {
   max: number | null;
@@ -21,7 +16,7 @@ export function resetAllLimits(): void {
 export function setMaxLimit(key: Limit, val: unknown): void {
   const max = typeof val === 'number' ? Math.max(0, val) : null;
   limits.set(key, { current: 0, max });
-  logger.debug(`${key} limit = ${max}`);
+  logger.debug(`${key} limit = ${max!}`);
 }
 
 export function incLimitedValue(key: Limit, incBy = 1): void {
@@ -34,6 +29,8 @@ export function incLimitedValue(key: Limit, incBy = 1): void {
 
 export function isLimitReached(key: Limit): boolean {
   const limit = limits.get(key);
+  // TODO: fix me?
+  // eslint-disable-next-line @typescript-eslint/prefer-optional-chain
   if (!limit || limit.max === null) {
     return false;
   }

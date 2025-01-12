@@ -1,13 +1,17 @@
-import { ProgrammingLanguage } from '../../../constants';
+import type { Category } from '../../../constants';
 import { DockerDatasource } from '../../datasource/docker';
 import { extractPackageFile } from './extract';
 
-const language = ProgrammingLanguage.Docker;
+export { extractPackageFile };
 
-export { extractPackageFile, language };
+export const url = 'https://docs.docker.com/build/concepts/dockerfile';
+export const categories: Category[] = ['docker'];
 
 export const defaultConfig = {
-  fileMatch: ['(^|/|\\.)Dockerfile$', '(^|/)Dockerfile[^/]*$'],
+  fileMatch: [
+    '(^|/|\\.)([Dd]ocker|[Cc]ontainer)file$',
+    '(^|/)([Dd]ocker|[Cc]ontainer)file[^/]*$',
+  ],
 };
 
 export const supportedDatasources = [DockerDatasource.id];

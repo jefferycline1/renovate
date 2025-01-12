@@ -1,108 +1,89 @@
 import upath from 'upath';
 import { regEx } from '../../../util/regex';
 import type { PackageDependency } from '../types';
-import { TokenType } from './common';
 import type {
   GradleManagerData,
   PackageVariables,
-  Token,
   VariableRegistry,
 } from './types';
 
 const artifactRegex = regEx(
-  '^[a-zA-Z][-_a-zA-Z0-9]*(?:\\.[a-zA-Z0-9][-_a-zA-Z0-9]*?)*$'
+  '^[a-zA-Z][-_a-zA-Z0-9]*(?:\\.[a-zA-Z0-9][-_a-zA-Z0-9]*?)*$',
 );
 
 const versionLikeRegex = regEx('^(?<version>[-_.\\[\\](),a-zA-Z0-9+]+)');
 
-// Extracts version-like and range-like strings
-// from the beginning of input
+// Extracts version-like and range-like strings from the beginning of input
 export function versionLikeSubstring(
-  input: string | null | undefined
+  input: string | null | undefined,
 ): string | null {
-  const match = input ? versionLikeRegex.exec(input) : null;
-  return match?.groups?.version ?? null;
+  if (!input) {
+    return null;
+  }
+
+  const match = versionLikeRegex.exec(input);
+  const version = match?.groups?.version;
+  if (!version || !regEx(/\d/).test(version)) {
+    return null;
+  }
+
+  return version;
 }
 
 export function isDependencyString(input: string): boolean {
-  const split = input?.split(':');
-  if (split?.length !== 3) {
+  const parts = input.split(':');
+  if (parts.length !== 3 && parts.length !== 4) {
     return false;
   }
-  // eslint-disable-next-line prefer-const
-  let [tempGroupId, tempArtifactId, tempVersionPart] = split;
-  if (
-    tempVersionPart !== versionLikeSubstring(tempVersionPart) &&
-    tempVersionPart.includes('@')
-  ) {
-    const versionSplit = tempVersionPart?.split('@');
-    if (versionSplit?.length !== 2) {
+  const [groupId, artifactId, versionPart, optionalClassifier] = parts;
+
+  if (optionalClassifier && !artifactRegex.test(optionalClassifier)) {
+    return false;
+  }
+
+  let version = versionPart;
+  if (versionPart.includes('@')) {
+    const [actualVersion, ...rest] = versionPart.split('@');
+    if (rest.length !== 1) {
       return false;
     }
-    [tempVersionPart] = versionSplit;
+    version = actualVersion;
   }
-  const [groupId, artifactId, versionPart] = [
-    tempGroupId,
-    tempArtifactId,
-    tempVersionPart,
-  ];
+
   return !!(
     groupId &&
     artifactId &&
-    versionPart &&
+    version &&
     artifactRegex.test(groupId) &&
     artifactRegex.test(artifactId) &&
-    versionPart === versionLikeSubstring(versionPart)
+    version === versionLikeSubstring(version)
   );
 }
 
 export function parseDependencyString(
-  input: string
+  input: string,
 ): PackageDependency<GradleManagerData> | null {
   if (!isDependencyString(input)) {
     return null;
   }
-  const [groupId, artifactId, FullValue] = input.split(':');
-  if (FullValue === versionLikeSubstring(FullValue)) {
-    return {
-      depName: `${groupId}:${artifactId}`,
-      currentValue: FullValue,
-    };
-  }
-  const [currentValue, dataType] = FullValue.split('@');
+
+  const [groupId, artifactId, fullValue] = input.split(':');
+  const [currentValue, dataType] = fullValue.split('@');
+
   return {
     depName: `${groupId}:${artifactId}`,
     currentValue,
-    dataType,
+    ...(dataType && { dataType }),
   };
-}
-
-export function interpolateString(
-  childTokens: Token[],
-  variables: PackageVariables
-): string | null {
-  const resolvedSubstrings: string[] = [];
-  for (const childToken of childTokens) {
-    const type = childToken.type;
-    if (type === TokenType.String) {
-      resolvedSubstrings.push(childToken.value);
-    } else if (type === TokenType.Variable) {
-      const varName = childToken.value;
-      const varData = variables[varName];
-      if (varData) {
-        resolvedSubstrings.push(varData.value);
-      } else {
-        return null;
-      }
-    } else {
-      return null;
-    }
-  }
-  return resolvedSubstrings.join('');
 }
 
 const gradleVersionsFileRegex = regEx('^versions\\.gradle(?:\\.kts)?$', 'i');
 const gradleBuildFileRegex = regEx('^build\\.gradle(?:\\.kts)?$', 'i');
+
+export function isGradleScriptFile(path: string): boolean {
+  const filename = upath.basename(path).toLowerCase();
+  return filename.endsWith('.gradle.kts') || filename.endsWith('.gradle');
+}
 
 export function isGradleVersionsFile(path: string): boolean {
   const filename = upath.basename(path);
@@ -117,6 +98,11 @@ export function isGradleBuildFile(path: string): boolean {
 export function isPropsFile(path: string): boolean {
   const filename = upath.basename(path).toLowerCase();
   return filename === 'gradle.properties';
+}
+
+export function isKotlinSourceFile(path: string): boolean {
+  const filename = upath.basename(path).toLowerCase();
+  return filename.endsWith('.kt');
 }
 
 export function isTOMLFile(path: string): boolean {
@@ -177,7 +163,7 @@ export function reorderFiles(packageFiles: string[]): string[] {
 export function getVars(
   registry: VariableRegistry,
   dir: string,
-  vars: PackageVariables = registry[dir] || {}
+  vars: PackageVariables = registry[dir] || {},
 ): PackageVariables {
   const dirAbs = toAbsolutePath(dir);
   const parentDir = upath.dirname(dirAbs);
@@ -186,4 +172,13 @@ export function getVars(
   }
   const parentVars = registry[parentDir] || {};
   return getVars(registry, parentDir, { ...parentVars, ...vars });
+}
+
+export function updateVars(
+  registry: VariableRegistry,
+  dir: string,
+  newVars: PackageVariables,
+): void {
+  const oldVars = registry[dir] ?? {};
+  registry[dir] = { ...oldVars, ...newVars };
 }

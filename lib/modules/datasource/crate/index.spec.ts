@@ -1,15 +1,18 @@
-import delay from 'delay';
+import { setTimeout } from 'timers/promises';
 import fs from 'fs-extra';
-import _simpleGit, { SimpleGit } from 'simple-git';
-import { DirectoryResult, dir } from 'tmp-promise';
+import type { SimpleGit } from 'simple-git';
+import _simpleGit from 'simple-git';
+import type { DirectoryResult } from 'tmp-promise';
+import { dir } from 'tmp-promise';
 import { dirname, join } from 'upath';
 import { getPkgReleases } from '..';
 import { Fixtures } from '../../../../test/fixtures';
 import * as httpMock from '../../../../test/http-mock';
 import { GlobalConfig } from '../../../config/global';
 import type { RepoGlobalConfig } from '../../../config/types';
+import { EXTERNAL_HOST_ERROR } from '../../../constants/error-messages';
 import * as memCache from '../../../util/cache/memory';
-import { RegistryFlavor, RegistryInfo } from './types';
+import type { RegistryInfo } from './types';
 import { CrateDatasource } from '.';
 
 jest.mock('simple-git');
@@ -29,13 +32,13 @@ function setupGitMocks(delayMs?: number): { mockClone: jest.Mock<any, any> } {
     .mockImplementation(
       async (_registryUrl: string, clonePath: string, _opts) => {
         if (delayMs && delayMs > 0) {
-          await delay(delayMs);
+          await setTimeout(delayMs);
         }
 
         const path = `${clonePath}/my/pk/mypkg`;
         fs.mkdirSync(dirname(path), { recursive: true });
         fs.writeFileSync(path, Fixtures.get('mypkg'), { encoding: 'utf8' });
-      }
+      },
     );
 
   simpleGit.mockReturnValue({
@@ -50,7 +53,7 @@ function setupErrorGitMock(): { mockClone: jest.Mock<any, any> } {
     .fn()
     .mockName('clone')
     .mockImplementation((_registryUrl: string, _clonePath: string, _opts) =>
-      Promise.reject(new Error('mocked error'))
+      Promise.reject(new Error('mocked error')),
     );
 
   simpleGit.mockReturnValue({
@@ -125,9 +128,9 @@ describe('modules/datasource/crate/index', () => {
       expect(
         await getPkgReleases({
           datasource,
-          depName: 'non_existent_crate',
+          packageName: 'non_existent_crate',
           registryUrls: [],
-        })
+        }),
       ).toBeNull();
     });
 
@@ -135,9 +138,9 @@ describe('modules/datasource/crate/index', () => {
       expect(
         await getPkgReleases({
           datasource,
-          depName: 'non_existent_crate',
+          packageName: 'non_existent_crate',
           registryUrls: ['3'],
-        })
+        }),
       ).toBeNull();
     });
 
@@ -147,9 +150,9 @@ describe('modules/datasource/crate/index', () => {
       expect(
         await getPkgReleases({
           datasource,
-          depName: 'non_existent_crate',
+          packageName: 'non_existent_crate',
           registryUrls: ['https://crates.io'],
-        })
+        }),
       ).toBeNull();
     });
 
@@ -162,9 +165,9 @@ describe('modules/datasource/crate/index', () => {
       expect(
         await getPkgReleases({
           datasource,
-          depName: 'non_existent_crate',
+          packageName: 'non_existent_crate',
           registryUrls: ['https://crates.io'],
-        })
+        }),
       ).toBeNull();
     });
 
@@ -174,9 +177,9 @@ describe('modules/datasource/crate/index', () => {
       expect(
         await getPkgReleases({
           datasource,
-          depName: 'non_existent_crate',
+          packageName: 'non_existent_crate',
           registryUrls: ['https://crates.io'],
-        })
+        }),
       ).toBeNull();
     });
 
@@ -185,26 +188,21 @@ describe('modules/datasource/crate/index', () => {
       expect(
         await getPkgReleases({
           datasource,
-          depName: 'some_crate',
+          packageName: 'some_crate',
           registryUrls: ['https://crates.io'],
-        })
+        }),
       ).toBeNull();
     });
 
     it('throws for 5xx', async () => {
       httpMock.scope(baseUrl).get('/so/me/some_crate').reply(502);
-      let e;
-      try {
-        await getPkgReleases({
+      await expect(
+        getPkgReleases({
           datasource,
-          depName: 'some_crate',
+          packageName: 'some_crate',
           registryUrls: ['https://crates.io'],
-        });
-      } catch (err) {
-        e = err;
-      }
-      expect(e).toBeDefined();
-      expect(e).toMatchSnapshot();
+        }),
+      ).rejects.toThrow(EXTERNAL_HOST_ERROR);
     });
 
     it('returns null for unknown error', async () => {
@@ -212,9 +210,9 @@ describe('modules/datasource/crate/index', () => {
       expect(
         await getPkgReleases({
           datasource,
-          depName: 'some_crate',
+          packageName: 'some_crate',
           registryUrls: ['https://crates.io'],
-        })
+        }),
       ).toBeNull();
     });
 
@@ -227,7 +225,7 @@ describe('modules/datasource/crate/index', () => {
         .reply(200, Fixtures.get('libc'));
       const res = await getPkgReleases({
         datasource,
-        depName: 'libc',
+        packageName: 'libc',
         registryUrls: ['https://crates.io'],
       });
       expect(res).toMatchSnapshot();
@@ -244,7 +242,7 @@ describe('modules/datasource/crate/index', () => {
         .reply(200, Fixtures.get('amethyst'));
       const res = await getPkgReleases({
         datasource,
-        depName: 'amethyst',
+        packageName: 'amethyst',
         registryUrls: ['https://crates.io'],
       });
       expect(res).toMatchSnapshot();
@@ -258,7 +256,7 @@ describe('modules/datasource/crate/index', () => {
       const url = 'https://dl.cloudsmith.io/basic/myorg/myrepo/cargo/index.git';
       const res = await getPkgReleases({
         datasource,
-        depName: 'mypkg',
+        packageName: 'mypkg',
         registryUrls: [url],
       });
       expect(mockClone).toHaveBeenCalledTimes(0);
@@ -271,7 +269,7 @@ describe('modules/datasource/crate/index', () => {
       const url = 'https://dl.cloudsmith.io/basic/myorg/myrepo/cargo/index.git';
       const res = await getPkgReleases({
         datasource,
-        depName: 'mypkg',
+        packageName: 'mypkg',
         registryUrls: [url],
       });
       expect(mockClone).toHaveBeenCalled();
@@ -286,7 +284,7 @@ describe('modules/datasource/crate/index', () => {
       const url = 'https://github.com/mcorbin/testregistry';
       const res = await getPkgReleases({
         datasource,
-        depName: 'mypkg',
+        packageName: 'mypkg',
         registryUrls: [url],
       });
       expect(mockClone).toHaveBeenCalled();
@@ -301,12 +299,12 @@ describe('modules/datasource/crate/index', () => {
       const url = 'https://github.com/mcorbin/othertestregistry';
       await getPkgReleases({
         datasource,
-        depName: 'mypkg',
+        packageName: 'mypkg',
         registryUrls: [url],
       });
       await getPkgReleases({
         datasource,
-        depName: 'mypkg',
+        packageName: 'mypkg',
         registryUrls: [url],
       });
       expect(mockClone).toHaveBeenCalledTimes(1);
@@ -320,19 +318,19 @@ describe('modules/datasource/crate/index', () => {
       await Promise.all([
         getPkgReleases({
           datasource,
-          depName: 'mypkg',
+          packageName: 'mypkg',
           registryUrls: [url],
         }),
         getPkgReleases({
           datasource,
-          depName: 'mypkg-2',
+          packageName: 'mypkg-2',
           registryUrls: [url],
         }),
       ]);
 
       await getPkgReleases({
         datasource,
-        depName: 'mypkg-3',
+        packageName: 'mypkg-3',
         registryUrls: [url],
       });
 
@@ -346,17 +344,34 @@ describe('modules/datasource/crate/index', () => {
 
       const result = await getPkgReleases({
         datasource,
-        depName: 'mypkg',
+        packageName: 'mypkg',
         registryUrls: [url],
       });
       const result2 = await getPkgReleases({
         datasource,
-        depName: 'mypkg-2',
+        packageName: 'mypkg-2',
         registryUrls: [url],
       });
 
       expect(result).toBeNull();
       expect(result2).toBeNull();
+    });
+
+    it('does not clone for sparse registries', async () => {
+      GlobalConfig.set({ ...adminConfig, allowCustomCrateRegistries: true });
+      const { mockClone } = setupGitMocks();
+
+      const url = 'https://github.com/mcorbin/othertestregistry';
+      const sparseUrl = `sparse+${url}`;
+      httpMock.scope(url).get('/my/pk/mypkg').reply(200, {});
+
+      const res = await getPkgReleases({
+        datasource,
+        packageName: 'mypkg',
+        registryUrls: [sparseUrl],
+      });
+      expect(mockClone).toHaveBeenCalledTimes(0);
+      expect(res).toBeNull();
     });
   });
 
@@ -365,12 +380,55 @@ describe('modules/datasource/crate/index', () => {
       const info: RegistryInfo = {
         rawUrl: 'https://example.com',
         url: new URL('https://example.com'),
-        flavor: RegistryFlavor.Cloudsmith,
+        flavor: 'cloudsmith',
+        isSparse: false,
       };
       const crateDatasource = new CrateDatasource();
       await expect(
-        crateDatasource.fetchCrateRecordsPayload(info, 'benedict')
+        crateDatasource.fetchCrateRecordsPayload(info, 'benedict'),
       ).toReject();
+    });
+  });
+
+  describe('postprocessRelease', () => {
+    const datasource = new CrateDatasource();
+
+    it('no-op for registries other than crates.io', async () => {
+      const releaseOrig = { version: '4.5.17' };
+
+      const res = await datasource.postprocessRelease(
+        {
+          packageName: 'clap',
+          registryUrl: 'https://example.com',
+        },
+        releaseOrig,
+      );
+
+      expect(res).toBe(releaseOrig);
+    });
+
+    it('fetches releaseTimestamp', async () => {
+      httpMock
+        .scope(API_BASE_URL)
+        .get('/crates/clap/4.5.17')
+        .reply(200, {
+          version: {
+            created_at: '2024-09-04T19:16:41.355243+00:00',
+          },
+        });
+
+      const res = await datasource.postprocessRelease(
+        {
+          packageName: 'clap',
+          registryUrl: 'https://crates.io',
+        },
+        { version: '4.5.17' },
+      );
+
+      expect(res).toEqual({
+        version: '4.5.17',
+        releaseTimestamp: '2024-09-04T19:16:41.355243+00:00',
+      });
     });
   });
 });

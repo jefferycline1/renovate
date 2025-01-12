@@ -1,14 +1,16 @@
-import { ProgrammingLanguage } from '../../../constants';
+import type { Category } from '../../../constants';
 import { PypiDatasource } from '../../datasource/pypi';
 
 export { extractPackageFile } from './extract';
 export { updateArtifacts } from './artifacts';
 
-export const language = ProgrammingLanguage.Python;
 export const supportsLockFileMaintenance = true;
 
-export const supportedDatasources = [PypiDatasource.id];
+export const url = 'https://pipenv.pypa.io/en/latest';
+export const categories: Category[] = ['python'];
 
 export const defaultConfig = {
   fileMatch: ['(^|/)Pipfile$'],
 };
+
+export const supportedDatasources = [PypiDatasource.id];

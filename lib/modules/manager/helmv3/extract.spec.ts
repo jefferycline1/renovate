@@ -1,16 +1,17 @@
-import { fs } from '../../../../test/util';
+import { fs, partial } from '../../../../test/util';
 import { DockerDatasource } from '../../datasource/docker';
+import type { ExtractConfig } from '../types';
 import { extractPackageFile } from '.';
 
 jest.mock('../../../util/fs');
+const config = partial<ExtractConfig>({
+  registryAliases: {
+    stable: 'https://charts.helm.sh/stable',
+  },
+});
 
 describe('modules/manager/helmv3/extract', () => {
   describe('extractPackageFile()', () => {
-    beforeEach(() => {
-      jest.resetAllMocks();
-      fs.readLocalFile = jest.fn();
-    });
-
     it('skips invalid registry urls', async () => {
       const content = `
       apiVersion: v2
@@ -29,11 +30,7 @@ describe('modules/manager/helmv3/extract', () => {
           version: 0.8.1
       `;
       const fileName = 'Chart.yaml';
-      const result = await extractPackageFile(content, fileName, {
-        registryAliases: {
-          stable: 'https://charts.helm.sh/stable',
-        },
-      });
+      const result = await extractPackageFile(content, fileName, config);
       expect(result).not.toBeNull();
       expect(result).toMatchSnapshot();
       expect(result?.deps.every((dep) => dep.skipReason)).toBe(true);
@@ -57,11 +54,7 @@ describe('modules/manager/helmv3/extract', () => {
           condition: postgresql.enabled
       `;
       const fileName = 'Chart.yaml';
-      const result = await extractPackageFile(content, fileName, {
-        registryAliases: {
-          stable: 'https://charts.helm.sh/stable',
-        },
-      });
+      const result = await extractPackageFile(content, fileName, config);
       expect(result).toMatchSnapshot({
         deps: [
           { depName: 'redis', currentValue: '0.9.0' },
@@ -90,11 +83,7 @@ describe('modules/manager/helmv3/extract', () => {
         condition: postgresql.enabled
       `;
       const fileName = 'Chart.yaml';
-      const result = await extractPackageFile(content, fileName, {
-        registryAliases: {
-          stable: 'https://charts.helm.sh/stable',
-        },
-      });
+      const result = await extractPackageFile(content, fileName, config);
       expect(result).toMatchSnapshot({
         deps: [
           {
@@ -145,11 +134,7 @@ describe('modules/manager/helmv3/extract', () => {
       [
       `;
       const fileName = 'Chart.yaml';
-      const result = await extractPackageFile(content, fileName, {
-        registryAliases: {
-          stable: 'https://charts.helm.sh/stable',
-        },
-      });
+      const result = await extractPackageFile(content, fileName, config);
       expect(result).toBeNull();
     });
 
@@ -169,11 +154,7 @@ describe('modules/manager/helmv3/extract', () => {
           repository: file:///some/local/path/
       `;
       const fileName = 'Chart.yaml';
-      const result = await extractPackageFile(content, fileName, {
-        registryAliases: {
-          stable: 'https://charts.helm.sh/stable',
-        },
-      });
+      const result = await extractPackageFile(content, fileName, config);
       expect(result).toMatchSnapshot({
         deps: [
           { depName: 'redis' },
@@ -194,11 +175,7 @@ describe('modules/manager/helmv3/extract', () => {
       hello: world
       `;
       const fileName = 'Chart.yaml';
-      const result = await extractPackageFile(content, fileName, {
-        registryAliases: {
-          stable: 'https://charts.helm.sh/stable',
-        },
-      });
+      const result = await extractPackageFile(content, fileName, config);
       expect(result).toBeNull();
     });
 
@@ -214,11 +191,7 @@ describe('modules/manager/helmv3/extract', () => {
       dependencies: []
       `;
       const fileName = 'Chart.yaml';
-      const result = await extractPackageFile(content, fileName, {
-        registryAliases: {
-          stable: 'https://charts.helm.sh/stable',
-        },
-      });
+      const result = await extractPackageFile(content, fileName, config);
       expect(result).toBeNull();
     });
 
@@ -234,22 +207,14 @@ describe('modules/manager/helmv3/extract', () => {
         [
       `;
       const fileName = 'Chart.yaml';
-      const result = await extractPackageFile(content, fileName, {
-        registryAliases: {
-          stable: 'https://charts.helm.sh/stable',
-        },
-      });
+      const result = await extractPackageFile(content, fileName, config);
       expect(result).toBeNull();
     });
 
     it('returns null if Chart.yaml is empty', async () => {
       const content = '';
       const fileName = 'Chart.yaml';
-      const result = await extractPackageFile(content, fileName, {
-        registryAliases: {
-          stable: 'https://charts.helm.sh/stable',
-        },
-      });
+      const result = await extractPackageFile(content, fileName, config);
       expect(result).toBeNull();
     });
 
@@ -262,11 +227,7 @@ describe('modules/manager/helmv3/extract', () => {
       version: 0.1.0
       `;
       const fileName = 'Chart.yaml';
-      const result = await extractPackageFile(content, fileName, {
-        registryAliases: {
-          stable: 'https://charts.helm.sh/stable',
-        },
-      });
+      const result = await extractPackageFile(content, fileName, config);
       expect(result).toBeNull();
     });
 
@@ -283,11 +244,7 @@ describe('modules/manager/helmv3/extract', () => {
           alias: "test"
       `;
       const fileName = 'Chart.yaml';
-      const result = await extractPackageFile(content, fileName, {
-        registryAliases: {
-          stable: 'https://charts.helm.sh/stable',
-        },
-      });
+      const result = await extractPackageFile(content, fileName, config);
       expect(result).toBeNull();
     });
   });

@@ -27,9 +27,19 @@ export function trimTrailingSlash(url: string): string {
 }
 
 export function trimLeadingSlash(path: string): string {
-  return path.replace(/^\//, '');
+  return path.replace(/^\/+/, '');
 }
 
+export function trimSlashes(path: string): string {
+  return trimLeadingSlash(trimTrailingSlash(path));
+}
+
+/**
+ * Resolves an input path against a base URL
+ *
+ * @param baseUrl - base URL to resolve against
+ * @param input - input path (if this is a full URL, it will be returned)
+ */
 export function resolveBaseUrl(baseUrl: string, input: string | URL): string {
   const inputString = input.toString();
 
@@ -37,48 +47,68 @@ export function resolveBaseUrl(baseUrl: string, input: string | URL): string {
   let pathname;
   try {
     ({ host, pathname } = new URL(inputString));
-  } catch (e) {
+  } catch {
     pathname = inputString;
   }
 
   return host ? inputString : urlJoin(baseUrl, pathname || '');
 }
 
+/**
+ * Replaces the path of a URL with a new path
+ *
+ * @param baseUrl - source URL
+ * @param path - replacement path (if this is a full URL, it will be returned)
+ */
+export function replaceUrlPath(baseUrl: string | URL, path: string): string {
+  if (parseUrl(path)) {
+    return path;
+  }
+
+  const { origin } = is.string(baseUrl) ? new URL(baseUrl) : baseUrl;
+  return urlJoin(origin, path);
+}
+
 export function getQueryString(params: Record<string, any>): string {
   const usp = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) {
-    if (Array.isArray(v)) {
+    if (is.array<object>(v)) {
       for (const item of v) {
+        // TODO: fix me?
+        // eslint-disable-next-line @typescript-eslint/no-base-to-string
         usp.append(k, item.toString());
       }
     } else {
       usp.append(k, v.toString());
     }
   }
-  const res = usp.toString();
-  return res;
+  return usp.toString();
 }
 
-export function validateUrl(url?: string, httpOnly = true): boolean {
-  if (!url) {
+export function isHttpUrl(url: unknown): boolean {
+  if (!is.nonEmptyString(url)) {
     return false;
   }
   try {
     const { protocol } = new URL(url);
-    return httpOnly ? !!protocol.startsWith('http') : !!protocol;
-  } catch (err) {
+    return protocol === 'https:' || protocol === 'http:';
+  } catch {
     return false;
   }
 }
 
-export function parseUrl(url: string | undefined | null): URL | null {
+export function parseUrl(url: URL | string | undefined | null): URL | null {
   if (!url) {
     return null;
   }
 
+  if (url instanceof URL) {
+    return url;
+  }
+
   try {
     return new URL(url);
-  } catch (err) {
+  } catch {
     return null;
   }
 }
@@ -95,7 +125,7 @@ export function createURLFromHostOrURL(url: string): URL | null {
 export type LinkHeaderLinks = _parseLinkHeader.Links;
 
 export function parseLinkHeader(
-  linkHeader: string | null | undefined
+  linkHeader: string | null | undefined,
 ): LinkHeaderLinks | null {
   if (!is.nonEmptyString(linkHeader)) {
     return null;
@@ -105,4 +135,17 @@ export function parseLinkHeader(
     return null;
   }
   return _parseLinkHeader(linkHeader);
+}
+
+/**
+ * prefix https:// to hosts with port or path
+ */
+export function massageHostUrl(url: string): string {
+  if (!url.includes('://') && url.includes('/')) {
+    return 'https://' + url;
+  } else if (!url.includes('://') && url.includes(':')) {
+    return 'https://' + url;
+  } else {
+    return url;
+  }
 }

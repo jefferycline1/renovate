@@ -4,14 +4,18 @@ import { escapeRegExp, newlineRegex, regEx } from '../../../util/regex';
 import { DockerDatasource } from '../../datasource/docker';
 import * as debianVersioning from '../../versioning/debian';
 import * as ubuntuVersioning from '../../versioning/ubuntu';
-import type { PackageDependency, PackageFile } from '../types';
+import type {
+  ExtractConfig,
+  PackageDependency,
+  PackageFileContent,
+} from '../types';
 
 const variableMarker = '$';
 
 export function extractVariables(image: string): Record<string, string> {
   const variables: Record<string, string> = {};
   const variableRegex = regEx(
-    /(?<fullvariable>\\?\$(?<simplearg>\w+)|\\?\${(?<complexarg>\w+)(?::.+?)?}+)/gi
+    /(?<fullvariable>\\?\$(?<simplearg>\w+)|\\?\${(?<complexarg>\w+)(?::.+?)?}+)/gi,
   );
 
   let match: RegExpExecArray | null;
@@ -40,7 +44,7 @@ function getAutoReplaceTemplate(dep: PackageDependency): string | undefined {
   if (dep.currentDigest) {
     template = template?.replace(
       dep.currentDigest,
-      '{{#if newDigest}}{{newDigest}}{{/if}}'
+      '{{#if newDigest}}{{newDigest}}{{/if}}',
     );
   }
 
@@ -51,14 +55,16 @@ function processDepForAutoReplace(
   dep: PackageDependency,
   lineNumberRanges: number[][],
   lines: string[],
-  linefeed: string
+  linefeed: string,
 ): void {
   const lineNumberRangesToReplace: number[][] = [];
   for (const lineNumberRange of lineNumberRanges) {
     for (const lineNumber of lineNumberRange) {
       if (
-        (dep.currentValue && lines[lineNumber].includes(dep.currentValue)) ||
-        (dep.currentDigest && lines[lineNumber].includes(dep.currentDigest))
+        (is.string(dep.currentValue) &&
+          lines[lineNumber].includes(dep.currentValue)) ||
+        (is.string(dep.currentDigest) &&
+          lines[lineNumber].includes(dep.currentDigest))
       ) {
         lineNumberRangesToReplace.push(lineNumberRange);
       }
@@ -82,12 +88,16 @@ function processDepForAutoReplace(
 
   const unfoldedLineNumbers = Array.from(
     { length: maxLine - minLine + 1 },
-    (_v, k) => k + minLine
+    (_v, k) => k + minLine,
   );
 
   dep.replaceString = unfoldedLineNumbers
     .map((lineNumber) => lines[lineNumber])
     .join(linefeed);
+
+  if (!dep.currentDigest) {
+    dep.replaceString += linefeed;
+  }
 
   dep.autoReplaceStringTemplate = getAutoReplaceTemplate(dep);
 }
@@ -155,9 +165,9 @@ const quayRegex = regEx(/^quay\.io(?::[1-9][0-9]{0,4})?/i);
 export function getDep(
   currentFrom: string | null | undefined,
   specifyReplaceString = true,
-  registryAliases?: Record<string, string>
+  registryAliases?: Record<string, string>,
 ): PackageDependency {
-  if (!is.string(currentFrom)) {
+  if (!is.string(currentFrom) || is.emptyStringOrWhitespace(currentFrom)) {
     return {
       skipReason: 'invalid-value',
     };
@@ -166,15 +176,15 @@ export function getDep(
   // Resolve registry aliases first so that we don't need special casing later on:
   for (const [name, value] of Object.entries(registryAliases ?? {})) {
     const escapedName = escapeRegExp(name);
-    const groups = regEx(`(?<prefix>${escapedName}/)(?<depName>.+)`).exec(
-      currentFrom
+    const groups = regEx(`(?<prefix>${escapedName})/(?<depName>.+)`).exec(
+      currentFrom,
     )?.groups;
     if (groups) {
       const dep = {
         ...getDep(`${value}/${groups.depName}`),
         replaceString: currentFrom,
       };
-      dep.autoReplaceStringTemplate = `${groups.prefix}${dep.autoReplaceStringTemplate}`;
+      dep.autoReplaceStringTemplate = getAutoReplaceTemplate(dep);
       return dep;
     }
   }
@@ -204,11 +214,14 @@ export function getDep(
     }
   }
 
-  if (dep.depName === 'ubuntu') {
+  if (dep.depName === 'ubuntu' || dep.depName?.endsWith('/ubuntu')) {
     dep.versioning = ubuntuVersioning.id;
   }
 
-  if (dep.depName === 'debian') {
+  if (
+    (dep.depName === 'debian' || dep.depName?.endsWith('/debian')) &&
+    debianVersioning.api.isVersion(dep.currentValue)
+  ) {
     dep.versioning = debianVersioning.id;
   }
 
@@ -226,7 +239,12 @@ export function getDep(
   return dep;
 }
 
-export function extractPackageFile(content: string): PackageFile | null {
+export function extractPackageFile(
+  content: string,
+  _packageFile: string,
+  config: ExtractConfig,
+): PackageFileContent | null {
+  const sanitizedContent = content.replace(regEx(/^\uFEFF/), ''); // remove bom marker
   const deps: PackageDependency[] = [];
   const stageNames: string[] = [];
   const args: Record<string, string> = {};
@@ -234,16 +252,17 @@ export function extractPackageFile(content: string): PackageFile | null {
 
   let escapeChar = '\\\\';
   let lookForEscapeChar = true;
+  let lookForSyntaxDirective = true;
 
-  const lineFeed = content.indexOf('\r\n') >= 0 ? '\r\n' : '\n';
-  const lines = content.split(newlineRegex);
+  const lineFeed = sanitizedContent.indexOf('\r\n') >= 0 ? '\r\n' : '\n';
+  const lines = sanitizedContent.split(newlineRegex);
   for (let lineNumber = 0; lineNumber < lines.length; ) {
     const lineNumberInstrStart = lineNumber;
     let instruction = lines[lineNumber];
 
     if (lookForEscapeChar) {
       const directivesMatch = regEx(
-        /^[ \t]*#[ \t]*(?<directive>syntax|escape)[ \t]*=[ \t]*(?<escapeChar>\S)/i
+        /^[ \t]*#[ \t]*(?<directive>syntax|escape)[ \t]*=[ \t]*(?<escapeChar>\S)/i,
       ).exec(instruction);
       if (!directivesMatch) {
         lookForEscapeChar = false;
@@ -253,6 +272,33 @@ export function extractPackageFile(content: string): PackageFile | null {
         }
         lookForEscapeChar = false;
       }
+    }
+
+    if (lookForSyntaxDirective) {
+      const syntaxRegex = regEx(
+        '^#[ \\t]*syntax[ \\t]*=[ \\t]*(?<image>\\S+)',
+        'im',
+      );
+      const syntaxMatch = instruction.match(syntaxRegex);
+      if (syntaxMatch?.groups?.image) {
+        const syntaxImage = syntaxMatch.groups.image;
+        const lineNumberRanges: number[][] = [
+          [lineNumberInstrStart, lineNumber],
+        ];
+        const dep = getDep(syntaxImage, true, config.registryAliases);
+        dep.depType = 'syntax';
+        processDepForAutoReplace(dep, lineNumberRanges, lines, lineFeed);
+        logger.trace(
+          {
+            depName: dep.depName,
+            currentValue: dep.currentValue,
+            currentDigest: dep.currentDigest,
+          },
+          'Dockerfile # syntax',
+        );
+        deps.push(dep);
+      }
+      lookForSyntaxDirective = false;
     }
 
     const lineContinuationRegex = regEx(escapeChar + '[ \\t]*$|^[ \\t]*#', 'm');
@@ -269,8 +315,8 @@ export function extractPackageFile(content: string): PackageFile | null {
     const argRegex = regEx(
       '^[ \\t]*ARG(?:' +
         escapeChar +
-        '[ \\t]*\\r?\\n| |\\t|#.*?\\r?\\n)+(?<name>\\S+)[ =](?<value>.*)',
-      'im'
+        '[ \\t]*\\r?\\n| |\\t|#.*?\\r?\\n)+(?<name>\\w+)[ =](?<value>\\S*)',
+      'im',
     );
     const argMatch = argRegex.exec(instruction);
     if (argMatch?.groups?.name) {
@@ -293,7 +339,7 @@ export function extractPackageFile(content: string): PackageFile | null {
         '[ \\t]*\\r?\\n| |\\t|#.*?\\r?\\n|--platform=\\S+)+(?<image>\\S+)(?:(?:' +
         escapeChar +
         '[ \\t]*\\r?\\n| |\\t|#.*?\\r?\\n)+as[ \\t]+(?<name>\\S+))?',
-      'im'
+      'im',
     ); // TODO #12875 complex for re2 has too many not supported groups
     const fromMatch = instruction.match(fromRegex);
     if (fromMatch?.groups?.image) {
@@ -313,16 +359,16 @@ export function extractPackageFile(content: string): PackageFile | null {
 
       if (fromMatch.groups?.name) {
         logger.debug(
-          `Found a multistage build stage name: ${fromMatch.groups.name}`
+          `Found a multistage build stage name: ${fromMatch.groups.name}`,
         );
         stageNames.push(fromMatch.groups.name);
       }
       if (fromImage === 'scratch') {
         logger.debug('Skipping scratch');
       } else if (fromImage && stageNames.includes(fromImage)) {
-        logger.debug({ image: fromImage }, 'Skipping alias FROM');
+        logger.debug(`Skipping alias FROM image:${fromImage}`);
       } else {
-        const dep = getDep(fromImage);
+        const dep = getDep(fromImage, true, config.registryAliases);
         processDepForAutoReplace(dep, lineNumberRanges, lines, lineFeed);
         logger.trace(
           {
@@ -330,7 +376,7 @@ export function extractPackageFile(content: string): PackageFile | null {
             currentValue: dep.currentValue,
             currentDigest: dep.currentDigest,
           },
-          'Dockerfile FROM'
+          'Dockerfile FROM',
         );
         deps.push(dep);
       }
@@ -339,18 +385,22 @@ export function extractPackageFile(content: string): PackageFile | null {
     const copyFromRegex = new RegExp(
       '^[ \\t]*COPY(?:' +
         escapeChar +
-        '[ \\t]*\\r?\\n| |\\t|#.*?\\r?\\n|--[a-z]+=[a-zA-Z0-9_.:-]+?)+--from=(?<image>\\S+)',
-      'im'
+        '[ \\t]*\\r?\\n| |\\t|#.*?\\r?\\n|--[a-z]+(?:=[a-zA-Z0-9_.:-]+?)?)+--from=(?<image>\\S+)',
+      'im',
     ); // TODO #12875 complex for re2 has too many not supported groups
     const copyFromMatch = instruction.match(copyFromRegex);
     if (copyFromMatch?.groups?.image) {
       if (stageNames.includes(copyFromMatch.groups.image)) {
         logger.debug(
           { image: copyFromMatch.groups.image },
-          'Skipping alias COPY --from'
+          'Skipping alias COPY --from',
         );
       } else if (Number.isNaN(Number(copyFromMatch.groups.image))) {
-        const dep = getDep(copyFromMatch.groups.image);
+        const dep = getDep(
+          copyFromMatch.groups.image,
+          true,
+          config.registryAliases,
+        );
         const lineNumberRanges: number[][] = [
           [lineNumberInstrStart, lineNumber],
         ];
@@ -361,14 +411,49 @@ export function extractPackageFile(content: string): PackageFile | null {
             currentValue: dep.currentValue,
             currentDigest: dep.currentDigest,
           },
-          'Dockerfile COPY --from'
+          'Dockerfile COPY --from',
         );
         deps.push(dep);
       } else {
         logger.debug(
           { image: copyFromMatch.groups.image },
-          'Skipping index reference COPY --from'
+          'Skipping index reference COPY --from',
         );
+      }
+    }
+
+    const runMountFromRegex = regEx(
+      '^[ \\t]*RUN(?:' +
+        escapeChar +
+        '[ \\t]*\\r?\\n| |\\t|#.*?\\r?\\n|--[a-z]+(?:=[a-zA-Z0-9_.:-]+?)?)+--mount=(?:\\S*=\\S*,)*from=(?<image>[^, ]+)',
+      'im',
+    );
+    const runMountFromMatch = instruction.match(runMountFromRegex);
+    if (runMountFromMatch?.groups?.image) {
+      if (stageNames.includes(runMountFromMatch.groups.image)) {
+        logger.debug(
+          { image: runMountFromMatch.groups.image },
+          'Skipping alias RUN --mount=from',
+        );
+      } else {
+        const dep = getDep(
+          runMountFromMatch.groups.image,
+          true,
+          config.registryAliases,
+        );
+        const lineNumberRanges: number[][] = [
+          [lineNumberInstrStart, lineNumber],
+        ];
+        processDepForAutoReplace(dep, lineNumberRanges, lines, lineFeed);
+        logger.debug(
+          {
+            depName: dep.depName,
+            currentValue: dep.currentValue,
+            currentDigest: dep.currentDigest,
+          },
+          'Dockerfile RUN --mount=from',
+        );
+        deps.push(dep);
       }
     }
 
@@ -379,7 +464,9 @@ export function extractPackageFile(content: string): PackageFile | null {
     return null;
   }
   for (const d of deps) {
-    d.depType = 'stage';
+    if (!d.depType) {
+      d.depType = 'stage';
+    }
   }
   deps[deps.length - 1].depType = 'final';
   return { deps };

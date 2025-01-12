@@ -1,9 +1,9 @@
 import is from '@sindresorhus/is';
-import { PlatformId } from '../../constants';
+import type { RetryObject } from 'got';
 import { logger } from '../../logger';
 import { ExternalHostError } from '../../types/errors/external-host-error';
 import { parseLinkHeader, parseUrl } from '../url';
-import type { HttpResponse, InternalHttpOptions } from './types';
+import type { HttpOptions, HttpResponse, InternalHttpOptions } from './types';
 import { Http } from '.';
 
 let baseUrl = 'https://gitlab.com/api/v4/';
@@ -11,23 +11,18 @@ export const setBaseUrl = (url: string): void => {
   baseUrl = url;
 };
 
-interface GitlabInternalOptions extends InternalHttpOptions {
-  body?: string;
-}
-
-export interface GitlabHttpOptions extends InternalHttpOptions {
+export interface GitlabHttpOptions extends HttpOptions {
   paginate?: boolean;
-  token?: string;
 }
 
-export class GitlabHttp extends Http<GitlabHttpOptions, GitlabHttpOptions> {
-  constructor(type: string = PlatformId.Gitlab, options?: GitlabHttpOptions) {
+export class GitlabHttp extends Http<GitlabHttpOptions> {
+  constructor(type = 'gitlab', options?: GitlabHttpOptions) {
     super(type, options);
   }
 
   protected override async request<T>(
     url: string | URL,
-    options?: GitlabInternalOptions & GitlabHttpOptions
+    options?: InternalHttpOptions & GitlabHttpOptions,
   ): Promise<HttpResponse<T>> {
     const opts = {
       baseUrl,
@@ -72,7 +67,7 @@ export class GitlabHttp extends Http<GitlabHttpOptions, GitlabHttpOptions> {
         err.statusCode === 429 ||
         (err.statusCode >= 500 && err.statusCode < 600)
       ) {
-        throw new ExternalHostError(err, PlatformId.Gitlab);
+        throw new ExternalHostError(err, 'gitlab');
       }
       const platformFailureCodes = [
         'EAI_AGAIN',
@@ -81,12 +76,27 @@ export class GitlabHttp extends Http<GitlabHttpOptions, GitlabHttpOptions> {
         'UNABLE_TO_VERIFY_LEAF_SIGNATURE',
       ];
       if (platformFailureCodes.includes(err.code)) {
-        throw new ExternalHostError(err, PlatformId.Gitlab);
+        throw new ExternalHostError(err, 'gitlab');
       }
       if (err.name === 'ParseError') {
-        throw new ExternalHostError(err, PlatformId.Gitlab);
+        throw new ExternalHostError(err, 'gitlab');
       }
       throw err;
     }
+  }
+
+  protected override calculateRetryDelay(retryObject: RetryObject): number {
+    const { error, attemptCount, retryOptions } = retryObject;
+    if (
+      attemptCount <= retryOptions.limit &&
+      error.options.method === 'POST' &&
+      error.response?.statusCode === 409 &&
+      error.response.rawBody.toString().includes('Resource lock')
+    ) {
+      const noise = Math.random() * 100;
+      return 2 ** (attemptCount - 1) * 1000 + noise;
+    }
+
+    return super.calculateRetryDelay(retryObject);
   }
 }
