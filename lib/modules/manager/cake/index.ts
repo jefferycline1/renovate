@@ -1,14 +1,17 @@
 import moo from 'moo';
-import { ProgrammingLanguage } from '../../../constants';
+import type { Category } from '../../../constants';
 import { regEx } from '../../../util/regex';
 import { NugetDatasource } from '../../datasource/nuget';
-import type { PackageDependency, PackageFile } from '../types';
+import type { PackageDependency, PackageFileContent } from '../types';
 
-export const language = ProgrammingLanguage.NET;
+export const url = 'https://cakebuild.net/docs';
+export const categories: Category[] = ['dotnet'];
 
 export const defaultConfig = {
   fileMatch: ['\\.cake$'],
 };
+
+export const supportedDatasources = [NugetDatasource.id];
 
 const lexer = moo.states({
   main: {
@@ -31,7 +34,8 @@ function parseDependencyLine(line: string): PackageDependency | null {
     const isEmptyHost = url.startsWith('?');
     url = isEmptyHost ? `http://localhost/${url}` : url;
 
-    const { origin: registryUrl, protocol, searchParams } = new URL(url);
+    const { origin, pathname, protocol, searchParams } = new URL(url);
+    const registryUrl = `${origin}${pathname}`;
 
     const depName = searchParams.get('package')!;
     const currentValue = searchParams.get('version') ?? undefined;
@@ -51,12 +55,12 @@ function parseDependencyLine(line: string): PackageDependency | null {
     }
 
     return result;
-  } catch (err) {
+  } catch {
     return null;
   }
 }
 
-export function extractPackageFile(content: string): PackageFile {
+export function extractPackageFile(content: string): PackageFileContent {
   const deps: PackageDependency[] = [];
   lexer.reset(content);
   let token = lexer.next();
@@ -72,5 +76,3 @@ export function extractPackageFile(content: string): PackageFile {
   }
   return { deps };
 }
-
-export const supportedDatasources = [NugetDatasource.id];

@@ -1,8 +1,12 @@
-import { CdnJsDatasource } from '../../datasource/cdnjs';
+import type { Category } from '../../../constants';
+import { CdnjsDatasource } from '../../datasource/cdnjs';
 import * as semverVersioning from '../../versioning/semver';
 import { extractPackageFile } from './extract';
 
 export { extractPackageFile };
+
+export const displayName = 'HTML';
+export const categories: Category[] = ['cd'];
 
 export const defaultConfig = {
   fileMatch: ['\\.html?$'],
@@ -13,4 +17,4 @@ export const defaultConfig = {
   pinDigests: false,
 };
 
-export const supportedDatasources = [CdnJsDatasource.id];
+export const supportedDatasources = [CdnjsDatasource.id];

@@ -1,3 +1,4 @@
+import type { PlatformCommitOptions } from '../../config/types';
 import type { GitOptions } from '../../types/git';
 
 export type { DiffResult, StatusResult } from 'simple-git';
@@ -9,22 +10,28 @@ export interface GitAuthor {
 
 export type GitNoVerifyOption = 'commit' | 'push';
 
-export type CommitSha = string;
+/**
+ * We want to make sure this is a long sha of 40 characters and not just any string
+ */
+export type LongCommitSha = string & { __longCommitSha: never };
 
 export interface StorageConfig {
   currentBranch?: string;
+  defaultBranch?: string;
   url: string;
   extraCloneOpts?: GitOptions;
   cloneSubmodules?: boolean;
+  cloneSubmodulesFilter?: string[];
   fullClone?: boolean;
 }
 
 export interface LocalConfig extends StorageConfig {
   additionalBranches: string[];
   currentBranch: string;
-  currentBranchSha: string;
-  branchCommits: Record<string, CommitSha>;
+  currentBranchSha: LongCommitSha;
+  branchCommits: Record<string, LongCommitSha>;
   branchIsModified: Record<string, boolean>;
+  commitBranches: Record<string, string[]>;
   ignoredAuthors: string[];
   gitAuthorName?: string | null;
   gitAuthorEmail?: string;
@@ -71,32 +78,27 @@ export interface FileDeletion {
 export type FileChange = FileAddition | FileDeletion;
 
 export interface CommitFilesConfig {
+  baseBranch?: string;
   branchName: string;
   files: FileChange[];
-  message: string;
+  message: string | string[];
   force?: boolean;
-  platformCommit?: boolean;
+  platformCommit?: PlatformCommitOptions;
+  /** Only needed by Gerrit platform */
+  prTitle?: string;
+}
+
+export interface PushFilesConfig {
+  sourceRef: string;
+  targetRef?: string;
+  files: FileChange[];
 }
 
 export type BranchName = string;
-export type TargetBranchName = BranchName;
-export type SourceBranchName = BranchName;
-
-export type GitConflictsCache = Record<TargetBranchName, TargetBranchConflicts>;
-
-export interface TargetBranchConflicts {
-  targetBranchSha: CommitSha;
-  sourceBranches: Record<SourceBranchName, SourceBranchConflict>;
-}
-
-export interface SourceBranchConflict {
-  sourceBranchSha: CommitSha;
-  isConflicted: boolean;
-}
 
 export interface CommitResult {
-  parentCommitSha: string;
-  commitSha: string;
+  parentCommitSha: LongCommitSha;
+  commitSha: LongCommitSha;
   files: FileChange[];
 }
 
@@ -104,7 +106,7 @@ export interface TreeItem {
   path: string;
   mode: string;
   type: string;
-  sha: string;
+  sha: LongCommitSha;
 }
 
 /**

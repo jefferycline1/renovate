@@ -24,19 +24,21 @@ import { newlineRegex, regEx } from '../../../../util/regex';
 import { uniqueStrings } from '../../../../util/string';
 import { NpmDatasource } from '../../../datasource/npm';
 import type { PostUpdateConfig, Upgrade } from '../../types';
+import { getYarnLock, getYarnVersionFromLock } from '../extract/yarn';
 import type { NpmManagerData } from '../types';
-import { getNodeConstraint, getNodeUpdate } from './node-version';
+import { getNodeToolConstraint } from './node-version';
 import type { GenerateLockFileResult } from './types';
+import { getPackageManagerVersion, lazyLoadPackageJson } from './utils';
 
 export async function checkYarnrc(
-  lockFileDir: string
+  lockFileDir: string,
 ): Promise<{ offlineMirror: boolean; yarnPath: string | null }> {
   let offlineMirror = false;
   let yarnPath: string | null = null;
   try {
     const yarnrc = await readLocalFile(
       upath.join(lockFileDir, '.yarnrc'),
-      'utf8'
+      'utf8',
     );
     if (is.string(yarnrc)) {
       const mirrorLine = yarnrc
@@ -56,27 +58,31 @@ export async function checkYarnrc(
       const yarnBinaryExists = yarnPath
         ? await localPathIsFile(yarnPath)
         : false;
+      let scrubbedYarnrc = yarnrc
+        .replace('--install.pure-lockfile true', '')
+        .replace('--install.frozen-lockfile true', '');
       if (!yarnBinaryExists) {
-        const scrubbedYarnrc = yarnrc.replace(
+        scrubbedYarnrc = scrubbedYarnrc.replace(
           regEx(/^yarn-path\s+"?.+?"?$/gm),
-          ''
-        );
-        await writeLocalFile(
-          upath.join(lockFileDir, '.yarnrc'),
-          scrubbedYarnrc
+          '',
         );
         yarnPath = null;
       }
+      if (yarnrc !== scrubbedYarnrc) {
+        logger.debug(`Writing scrubbed .yarnrc to ${lockFileDir}`);
+        await writeLocalFile(
+          upath.join(lockFileDir, '.yarnrc'),
+          scrubbedYarnrc,
+        );
+      }
     }
-  } catch (err) /* istanbul ignore next */ {
+  } catch /* istanbul ignore next */ {
     // not found
   }
   return { offlineMirror, yarnPath };
 }
 
-export function getOptimizeCommand(
-  fileName = '/home/ubuntu/.npm-global/lib/node_modules/yarn/lib/cli.js'
-): string {
+export function getOptimizeCommand(fileName: string): string {
   return `sed -i 's/ steps,/ steps.slice(0,1),/' ${quote(fileName)}`;
 }
 
@@ -88,17 +94,21 @@ export async function generateLockFile(
   lockFileDir: string,
   env: NodeJS.ProcessEnv,
   config: Partial<PostUpdateConfig<NpmManagerData>> = {},
-  upgrades: Upgrade[] = []
+  upgrades: Upgrade[] = [],
 ): Promise<GenerateLockFileResult> {
   const lockFileName = upath.join(lockFileDir, 'yarn.lock');
   logger.debug(`Spawning yarn install to create ${lockFileName}`);
   let lockFile: string | null = null;
   try {
-    const toolConstraints: ToolConstraint[] = [];
+    const lazyPgkJson = lazyLoadPackageJson(lockFileDir);
+    const toolConstraints: ToolConstraint[] = [
+      await getNodeToolConstraint(config, upgrades, lockFileDir, lazyPgkJson),
+    ];
     const yarnUpdate = upgrades.find(isYarnUpdate);
-    const yarnCompatibility = yarnUpdate
-      ? yarnUpdate.newValue
-      : config.constraints?.yarn;
+    const yarnCompatibility =
+      (yarnUpdate ? yarnUpdate.newValue : config.constraints?.yarn) ??
+      getPackageManagerVersion('yarn', await lazyPgkJson.getValue()) ??
+      getYarnVersionFromLock(await getYarnLock(lockFileName));
     const minYarnVersion =
       semver.validRange(yarnCompatibility) &&
       semver.minVersion(yarnCompatibility);
@@ -108,15 +118,21 @@ export async function generateLockFile(
     const isYarnModeAvailable =
       minYarnVersion && semver.gte(minYarnVersion, '3.0.0');
 
-    const preCommands: string[] = [];
-
     const yarnTool: ToolConstraint = {
       toolName: 'yarn',
       constraint: '^1.22.18', // needs to be a v1 yarn, otherwise v2 will be installed
     };
 
-    if (!isYarn1 && config.managerData?.hasPackageManager) {
-      toolConstraints.push({ toolName: 'corepack' });
+    // check first upgrade, see #17786
+    const hasPackageManager =
+      !!config.managerData?.hasPackageManager ||
+      !!upgrades[0]?.managerData?.hasPackageManager;
+
+    if (!isYarn1 && hasPackageManager) {
+      toolConstraints.push({
+        toolName: 'corepack',
+        constraint: config.constraints?.corepack,
+      });
     } else {
       toolConstraints.push(yarnTool);
       if (isYarn1 && minYarnVersion) {
@@ -174,17 +190,12 @@ export async function generateLockFile(
         extraEnv.YARN_ENABLE_SCRIPTS = '0';
       }
     }
-    const tagConstraint =
-      getNodeUpdate(upgrades) ?? (await getNodeConstraint(config));
+
     const execOptions: ExecOptions = {
+      userConfiguredEnv: config.env,
       cwdFile: lockFileName,
       extraEnv,
-      docker: {
-        image: 'node',
-        tagScheme: 'node',
-        tagConstraint,
-      },
-      preCommands,
+      docker: {},
       toolConstraints,
     };
     // istanbul ignore if
@@ -195,7 +206,23 @@ export async function generateLockFile(
 
     if (yarnUpdate && !isYarn1) {
       logger.debug('Updating Yarn binary');
-      commands.push(`yarn set version ${yarnUpdate.newValue}`);
+      // TODO: types (#22198)
+      commands.push(`yarn set version ${quote(yarnUpdate.newValue!)}`);
+    }
+
+    if (process.env.RENOVATE_X_YARN_PROXY) {
+      if (process.env.HTTP_PROXY && !isYarn1) {
+        commands.push('yarn config unset --home httpProxy');
+        commands.push(
+          `yarn config set --home httpProxy ${quote(process.env.HTTP_PROXY)}`,
+        );
+      }
+      if (process.env.HTTPS_PROXY && !isYarn1) {
+        commands.push('yarn config unset --home httpsProxy');
+        commands.push(
+          `yarn config set --home httpsProxy ${quote(process.env.HTTPS_PROXY)}`,
+        );
+      }
     }
 
     // This command updates the lock file based on package.json
@@ -213,15 +240,18 @@ export async function generateLockFile(
             .map((update) => update.depName)
             .filter(is.string)
             .filter(uniqueStrings)
-            .join(' ')}${cmdOptions}`
+            .map(quote)
+            .join(' ')}${cmdOptions}`,
         );
       } else {
-        // `yarn up` updates to the latest release, so the range should be specified
+        // `yarn up -R` updates to the latest release in each range
         commands.push(
-          `yarn up ${lockUpdates
-            .map((update) => `${update.depName}@${update.newValue}`)
+          `yarn up -R ${lockUpdates
+            // TODO: types (#22198)
+            .map((update) => `${update.depName!}`)
             .filter(uniqueStrings)
-            .join(' ')}${cmdOptions}`
+            .map(quote)
+            .join(' ')}${cmdOptions}`,
         );
       }
     }
@@ -230,7 +260,7 @@ export async function generateLockFile(
     ['fewer', 'highest'].forEach((s) => {
       if (
         config.postUpdateOptions?.includes(
-          `yarnDedupe${s.charAt(0).toUpperCase()}${s.slice(1)}`
+          `yarnDedupe${s.charAt(0).toUpperCase()}${s.slice(1)}`,
         )
       ) {
         logger.debug(`Performing yarn dedupe ${s}`);
@@ -248,7 +278,7 @@ export async function generateLockFile(
 
     if (upgrades.find((upgrade) => upgrade.isLockFileMaintenance)) {
       logger.debug(
-        `Removing ${lockFileName} first due to lock file maintenance upgrade`
+        `Removing ${lockFileName} first due to lock file maintenance upgrade`,
       );
 
       // Note: Instead of just deleting the `yarn.lock` file, we just wipe it
@@ -262,7 +292,7 @@ export async function generateLockFile(
       } catch (err) /* istanbul ignore next */ {
         logger.debug(
           { err, lockFileName },
-          'Error clearing `yarn.lock` for lock file maintenance'
+          'Error clearing `yarn.lock` for lock file maintenance',
         );
       }
     }
@@ -281,21 +311,44 @@ export async function generateLockFile(
         err,
         type: 'yarn',
       },
-      'lock file error'
+      'lock file error',
     );
-    if (err.stderr) {
-      if (err.stderr.includes('ENOSPC: no space left on device')) {
-        throw new Error(SYSTEM_INSUFFICIENT_DISK_SPACE);
-      }
-      if (
-        err.stderr.includes('The registry may be down.') ||
-        err.stderr.includes('getaddrinfo ENOTFOUND registry.yarnpkg.com') ||
-        err.stderr.includes('getaddrinfo ENOTFOUND registry.npmjs.org')
-      ) {
-        throw new ExternalHostError(err, NpmDatasource.id);
-      }
+    const stdouterr = String(err.stdout) + String(err.stderr);
+    if (
+      stdouterr.includes('ENOSPC: no space left on device') ||
+      stdouterr.includes('Out of diskspace')
+    ) {
+      throw new Error(SYSTEM_INSUFFICIENT_DISK_SPACE);
+    }
+    if (
+      stdouterr.includes('The registry may be down.') ||
+      stdouterr.includes('getaddrinfo ENOTFOUND registry.yarnpkg.com') ||
+      stdouterr.includes('getaddrinfo ENOTFOUND registry.npmjs.org')
+    ) {
+      throw new ExternalHostError(err, NpmDatasource.id);
     }
     return { error: true, stderr: err.stderr, stdout: err.stdout };
   }
   return { lockFile };
+}
+
+export function fuzzyMatchAdditionalYarnrcYml<
+  T extends { npmRegistries?: Record<string, unknown> },
+>(additionalYarnRcYml: T, existingYarnrRcYml: T): T {
+  const keys = new Map(
+    Object.keys(existingYarnrRcYml.npmRegistries ?? {}).map((x) => [
+      x.replace(/\/$/, '').replace(/^https?:/, ''),
+      x,
+    ]),
+  );
+
+  return {
+    ...additionalYarnRcYml,
+    npmRegistries: Object.entries(additionalYarnRcYml.npmRegistries ?? {})
+      .map(([k, v]) => {
+        const key = keys.get(k.replace(/\/$/, '')) ?? k;
+        return { [key]: v };
+      })
+      .reduce((acc, cur) => ({ ...acc, ...cur }), {}),
+  };
 }

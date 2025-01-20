@@ -1,19 +1,23 @@
+import is from '@sindresorhus/is';
 import { logger } from '../../../../logger';
 import type { Release } from '../../../../modules/datasource';
 import type { LookupUpdate } from '../../../../modules/manager/types';
 import type { VersioningApi } from '../../../../modules/versioning';
 import type { RangeStrategy } from '../../../../types';
+import { getElapsedDays } from '../../../../util/date';
+import { getMergeConfidenceLevel } from '../../../../util/merge-confidence';
 import type { LookupUpdateConfig } from './types';
 import { getUpdateType } from './update-type';
 
-export function generateUpdate(
+export async function generateUpdate(
   config: LookupUpdateConfig,
-  versioning: VersioningApi,
+  currentValue: string | undefined,
+  versioningApi: VersioningApi,
   rangeStrategy: RangeStrategy,
   currentVersion: string,
   bucket: string,
-  release: Release
-): LookupUpdate {
+  release: Release,
+): Promise<LookupUpdate> {
   const newVersion = release.version;
   const update: LookupUpdate = {
     bucket,
@@ -34,14 +38,23 @@ export function generateUpdate(
     update.newDigest = release.newDigest;
   }
   // istanbul ignore if
-  if (release.releaseTimestamp !== undefined) {
+  if (release.releaseTimestamp) {
     update.releaseTimestamp = release.releaseTimestamp;
+    update.newVersionAgeInDays = getElapsedDays(release.releaseTimestamp);
+  }
+  // istanbul ignore if
+  if (release.registryUrl !== undefined) {
+    /**
+     * This means:
+     *  - registry strategy is set to merge
+     *  - releases were fetched from multiple registry urls
+     */
+    update.registryUrl = release.registryUrl;
   }
 
-  const { currentValue } = config;
   if (currentValue) {
     try {
-      update.newValue = versioning.getNewValue({
+      update.newValue = versioningApi.getNewValue({
         currentValue,
         rangeStrategy,
         currentVersion,
@@ -50,15 +63,16 @@ export function generateUpdate(
     } catch (err) /* istanbul ignore next */ {
       logger.warn(
         { err, currentValue, rangeStrategy, currentVersion, newVersion },
-        'getNewValue error'
+        'getNewValue error',
       );
       update.newValue = currentValue;
     }
   } else {
-    update.newValue = currentValue!;
+    update.newValue = currentValue;
   }
-  update.newMajor = versioning.getMajor(newVersion)!;
-  update.newMinor = versioning.getMinor(newVersion)!;
+  update.newMajor = versioningApi.getMajor(newVersion)!;
+  update.newMinor = versioningApi.getMinor(newVersion)!;
+  update.newPatch = versioningApi.getPatch(newVersion)!;
   // istanbul ignore if
   if (!update.updateType && !currentVersion) {
     logger.debug({ update }, 'Update has no currentVersion');
@@ -67,8 +81,18 @@ export function generateUpdate(
   }
   update.updateType =
     update.updateType ??
-    getUpdateType(config, versioning, currentVersion, newVersion);
-  if (!versioning.isVersion(update.newValue)) {
+    getUpdateType(config, versioningApi, currentVersion, newVersion);
+  const { datasource, packageName, packageRules } = config;
+  if (packageRules?.some((pr) => is.nonEmptyArray(pr.matchConfidence))) {
+    update.mergeConfidenceLevel = await getMergeConfidenceLevel(
+      datasource,
+      packageName,
+      currentVersion,
+      newVersion,
+      update.updateType,
+    );
+  }
+  if (!versioningApi.isVersion(update.newValue)) {
     update.isRange = true;
   }
   if (rangeStrategy === 'update-lockfile' && currentValue === update.newValue) {
@@ -76,8 +100,8 @@ export function generateUpdate(
   }
   if (
     rangeStrategy === 'bump' &&
-    // TODO #7154
-    versioning.matches(newVersion, currentValue!)
+    // TODO #22198
+    versioningApi.matches(newVersion, currentValue!)
   ) {
     update.isBump = true;
   }

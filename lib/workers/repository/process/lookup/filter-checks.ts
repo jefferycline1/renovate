@@ -2,89 +2,104 @@ import is from '@sindresorhus/is';
 import { mergeChildConfig } from '../../../../config';
 import { logger } from '../../../../logger';
 import type { Release } from '../../../../modules/datasource';
+import { postprocessRelease } from '../../../../modules/datasource/postprocess-release';
 import type { VersioningApi } from '../../../../modules/versioning';
-import { getElapsedDays } from '../../../../util/date';
+import { getElapsedMs } from '../../../../util/date';
 import {
   getMergeConfidenceLevel,
   isActiveConfidenceLevel,
   satisfiesConfidenceLevel,
 } from '../../../../util/merge-confidence';
+import { coerceNumber } from '../../../../util/number';
 import { applyPackageRules } from '../../../../util/package-rules';
+import { toMs } from '../../../../util/pretty-time';
 import type { LookupUpdateConfig, UpdateResult } from './types';
 import { getUpdateType } from './update-type';
 
 export interface InternalChecksResult {
-  release: Release;
+  release?: Release;
   pendingChecks: boolean;
   pendingReleases?: Release[];
 }
 
 export async function filterInternalChecks(
   config: Partial<LookupUpdateConfig & UpdateResult>,
-  versioning: VersioningApi,
+  versioningApi: VersioningApi,
   bucket: string,
-  sortedReleases: Release[]
+  sortedReleases: Release[],
 ): Promise<InternalChecksResult> {
   const { currentVersion, datasource, depName, internalChecksFilter } = config;
   let release: Release | undefined = undefined;
   let pendingChecks = false;
   let pendingReleases: Release[] = [];
   if (internalChecksFilter === 'none') {
-    // Don't care if stabilityDays or minimumConfidence are unmet
+    // Don't care if minimumReleaseAge or minimumConfidence are unmet
     release = sortedReleases.pop();
   } else {
     // iterate through releases from highest to lowest, looking for the first which will pass checks if present
-    for (const candidateRelease of sortedReleases.reverse()) {
+    for (let candidateRelease of sortedReleases.reverse()) {
       // merge the release data into dependency config
       let releaseConfig = mergeChildConfig(config, candidateRelease);
       // calculate updateType and then apply it
       releaseConfig.updateType = getUpdateType(
         releaseConfig,
-        versioning,
-        // TODO #7154
+        versioningApi,
+        // TODO #22198
         currentVersion!,
-        candidateRelease.version
+        candidateRelease.version,
       );
       releaseConfig = mergeChildConfig(
         releaseConfig,
-        releaseConfig[releaseConfig.updateType]!
+        releaseConfig[releaseConfig.updateType]!,
       );
       // Apply packageRules in case any apply to updateType
-      releaseConfig = applyPackageRules(releaseConfig);
-      // Now check for a stabilityDays config
-      const {
-        minimumConfidence,
-        stabilityDays,
-        releaseTimestamp,
-        version: newVersion,
-        updateType,
-      } = releaseConfig;
-      if (is.integer(stabilityDays) && releaseTimestamp) {
-        if (getElapsedDays(releaseTimestamp) < stabilityDays) {
+      releaseConfig = await applyPackageRules(releaseConfig, 'update-type');
+
+      const updatedCandidateRelease = await postprocessRelease(
+        releaseConfig,
+        candidateRelease,
+      );
+      if (!updatedCandidateRelease) {
+        continue;
+      }
+      candidateRelease = updatedCandidateRelease;
+
+      // Now check for a minimumReleaseAge config
+      const { minimumConfidence, minimumReleaseAge, updateType } =
+        releaseConfig;
+      if (
+        is.nonEmptyString(minimumReleaseAge) &&
+        candidateRelease.releaseTimestamp
+      ) {
+        if (
+          getElapsedMs(candidateRelease.releaseTimestamp) <
+          coerceNumber(toMs(minimumReleaseAge), 0)
+        ) {
           // Skip it if it doesn't pass checks
-          logger.debug(
-            { depName, check: 'stabilityDays' },
-            `Release ${candidateRelease.version} is pending status checks`
+          logger.trace(
+            { depName, check: 'minimumReleaseAge' },
+            `Release ${candidateRelease.version} is pending status checks`,
           );
           pendingReleases.unshift(candidateRelease);
           continue;
         }
       }
 
-      // TODO #7154
+      // TODO #22198
       if (isActiveConfidenceLevel(minimumConfidence!)) {
-        const confidenceLevel = await getMergeConfidenceLevel(
-          datasource!,
-          depName!,
-          currentVersion!,
-          newVersion,
-          updateType!
-        );
-        // TODO #7154
+        const confidenceLevel =
+          (await getMergeConfidenceLevel(
+            datasource!,
+            depName!,
+            currentVersion!,
+            candidateRelease.version,
+            updateType!,
+          )) ?? 'neutral';
+        // TODO #22198
         if (!satisfiesConfidenceLevel(confidenceLevel, minimumConfidence!)) {
-          logger.debug(
+          logger.trace(
             { depName, check: 'minimumConfidence' },
-            `Release ${candidateRelease.version} is pending status checks`
+            `Release ${candidateRelease.version} is pending status checks`,
           );
           pendingReleases.unshift(candidateRelease);
           continue;
@@ -97,9 +112,9 @@ export async function filterInternalChecks(
     if (!release) {
       if (pendingReleases.length) {
         // If all releases were pending then just take the highest
-        logger.debug(
+        logger.trace(
           { depName, bucket },
-          'All releases are pending - using latest'
+          'All releases are pending - using latest',
         );
         release = pendingReleases.pop();
         // None are pending anymore because we took the latest, so empty the array
@@ -111,6 +126,5 @@ export async function filterInternalChecks(
     }
   }
 
-  // TODO #7154
-  return { release: release!, pendingChecks, pendingReleases };
+  return { release, pendingChecks, pendingReleases };
 }

@@ -1,261 +1,310 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
 exports[`modules/manager/setup-cfg/extract extractPackageFile() extracts dependencies 1`] = `
-Object {
-  "deps": Array [
-    Object {
+{
+  "deps": [
+    {
       "currentValue": "~=14.0",
       "datasource": "pypi",
       "depName": "coloredlogs",
       "depType": "install",
+      "packageName": "coloredlogs",
     },
-    Object {
+    {
       "currentValue": "~=1.0",
       "datasource": "pypi",
       "depName": "first",
       "depType": "install",
+      "packageName": "first",
     },
-    Object {
+    {
       "currentValue": "==2.2",
       "currentVersion": "2.2",
       "datasource": "pypi",
       "depName": "second",
       "depType": "install",
+      "packageName": "second",
     },
-    Object {
+    {
       "currentValue": ">=3.0",
       "datasource": "pypi",
       "depName": "third",
       "depType": "install",
+      "packageName": "third",
     },
-    Object {
+    {
       "currentValue": ">=5.5.5",
       "datasource": "pypi",
       "depName": "quux",
       "depType": "install",
+      "packageName": "quux",
     },
-    Object {
+    {
       "currentValue": "~=2.1",
       "datasource": "pypi",
       "depName": "python-dateutil",
       "depType": "install",
+      "packageName": "python-dateutil",
     },
-    Object {
+    {
       "currentValue": ">=1.1.1",
       "datasource": "pypi",
       "depName": "foo",
       "depType": "install",
+      "packageName": "foo",
     },
-    Object {
+    {
       "currentValue": ">=3.3.3.",
       "datasource": "pypi",
       "depName": "baz",
       "depType": "install",
+      "packageName": "baz",
     },
-    Object {
+    {
       "currentValue": "~=0.4",
       "datasource": "pypi",
       "depName": "docopt",
       "depType": "install",
+      "packageName": "docopt",
     },
-    Object {
+    {
       "currentValue": "~=2.1",
       "datasource": "pypi",
       "depName": "fs",
       "depType": "install",
+      "packageName": "fs",
     },
-    Object {
+    {
       "currentValue": "==1.0",
       "currentVersion": "1.0",
       "datasource": "pypi",
       "depName": "nmspc.pkg",
       "depType": "install",
+      "packageName": "nmspc-pkg",
     },
-    Object {
+    {
       "currentValue": "~=2.18",
       "datasource": "pypi",
       "depName": "requests",
       "depType": "install",
+      "packageName": "requests",
     },
-    Object {
+    {
       "currentValue": "~=1.2.3",
       "datasource": "pypi",
       "depName": "compact",
       "depType": "install",
+      "packageName": "compact",
     },
-    Object {
+    {
+      "currentValue": ">=2.27.0",
+      "datasource": "pypi",
+      "depName": "responses",
+      "depType": "install",
+      "packageName": "responses",
+    },
+    {
       "currentValue": "~=1.4",
       "datasource": "pypi",
       "depName": "six",
       "depType": "setup",
+      "packageName": "six",
     },
-    Object {
+    {
       "currentValue": "~=4.19",
       "datasource": "pypi",
       "depName": "tqdm",
       "depType": "setup",
+      "packageName": "tqdm",
     },
-    Object {
+    {
       "currentValue": "~=6.0",
       "datasource": "pypi",
       "depName": "tenacity",
       "depType": "setup",
+      "packageName": "tenacity",
     },
-    Object {
+    {
       "currentValue": "~=3.6",
       "datasource": "pypi",
       "depName": "typing",
       "depType": "test",
+      "packageName": "typing",
     },
-    Object {
+    {
       "currentValue": "~=1.7",
       "datasource": "pypi",
       "depName": "verboselogs",
       "depType": "test",
+      "packageName": "verboselogs",
     },
-    Object {
+    {
       "currentValue": undefined,
       "datasource": "pypi",
       "depName": "piexif",
       "depType": "extra",
+      "packageName": "piexif",
     },
-    Object {
+    {
       "currentValue": undefined,
       "datasource": "pypi",
       "depName": "Pillow",
       "depType": "extra",
+      "packageName": "pillow",
     },
-    Object {
+    {
       "currentValue": ">=2.2.2",
       "datasource": "pypi",
       "depName": "bar",
       "depType": "extra",
+      "packageName": "bar",
     },
-    Object {
+    {
       "currentValue": ">=4.4.4",
       "datasource": "pypi",
       "depName": "qux",
       "depType": "extra",
+      "packageName": "qux",
     },
-    Object {
+    {
       "currentValue": "~=0.1",
       "datasource": "pypi",
       "depName": "contexter",
       "depType": "extra",
+      "packageName": "contexter",
     },
-    Object {
+    {
       "currentValue": "~=2.0",
       "datasource": "pypi",
       "depName": "mock",
       "depType": "extra",
+      "packageName": "mock",
     },
-    Object {
+    {
       "currentValue": "~=0.6",
       "datasource": "pypi",
       "depName": "parameterized",
       "depType": "extra",
+      "packageName": "parameterized",
     },
-    Object {
+    {
       "currentValue": "~=2.12",
       "datasource": "pypi",
       "depName": "green",
       "depType": "extra",
+      "packageName": "green",
     },
-    Object {
+    {
       "currentValue": undefined,
       "datasource": "pypi",
       "depName": "coverage",
       "depType": "extra",
+      "packageName": "coverage",
     },
-    Object {
+    {
       "currentValue": undefined,
       "datasource": "pypi",
       "depName": "codecov",
       "depType": "extra",
+      "packageName": "codecov",
     },
-    Object {
+    {
       "currentValue": undefined,
       "datasource": "pypi",
       "depName": "codacy-coverage",
       "depType": "extra",
+      "packageName": "codacy-coverage",
     },
-    Object {
+    {
       "currentValue": "~=1.7",
       "datasource": "pypi",
       "depName": "sphinx",
       "depType": "extra",
+      "packageName": "sphinx",
     },
-    Object {
+    {
       "currentValue": "~=0.6",
       "datasource": "pypi",
       "depName": "sphinx-bootstrap-theme",
       "depType": "extra",
+      "packageName": "sphinx-bootstrap-theme",
     },
-    Object {
+    {
       "currentValue": "~=2.6",
       "datasource": "pypi",
       "depName": "semantic-version",
       "depType": "extra",
+      "packageName": "semantic-version",
     },
-    Object {
+    {
       "currentValue": undefined,
       "datasource": "pypi",
       "depName": "docutils",
       "depType": "extra",
+      "packageName": "docutils",
     },
-    Object {
+    {
       "currentValue": undefined,
       "datasource": "pypi",
       "depName": "Pygments",
       "depType": "extra",
+      "packageName": "pygments",
     },
-    Object {
+    {
       "currentValue": ">=0.9",
       "datasource": "pypi",
       "depName": "aiortc",
       "depType": "install",
+      "packageName": "aiortc",
     },
-    Object {
+    {
       "currentValue": ">=8.1",
       "datasource": "pypi",
       "depName": "websockets",
       "depType": "install",
+      "packageName": "websockets",
     },
-    Object {
+    {
       "currentValue": ">=3.6",
       "datasource": "pypi",
       "depName": "aiohttp",
       "depType": "install",
+      "packageName": "aiohttp",
     },
-    Object {
+    {
       "currentValue": ">=6.0",
       "datasource": "pypi",
       "depName": "pyee",
       "depType": "install",
+      "packageName": "pyee",
     },
-    Object {
+    {
       "currentValue": ">=8.1",
       "datasource": "pypi",
       "depName": "websockets",
       "depType": "install",
+      "packageName": "websockets",
     },
-    Object {
+    {
       "currentValue": ">=0.3",
       "datasource": "pypi",
       "depName": "dataclasses_json",
       "depType": "install",
+      "packageName": "dataclasses-json",
     },
-    Object {
+    {
       "currentValue": ">=10.0",
       "datasource": "pypi",
       "depName": "coloredlogs",
       "depType": "install",
+      "packageName": "coloredlogs",
     },
-    Object {
+    {
       "currentValue": "~=8.0.0",
       "datasource": "pypi",
       "depName": "av",
       "depType": "install",
+      "packageName": "av",
     },
   ],
 }

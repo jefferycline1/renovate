@@ -1,7 +1,7 @@
-import { ProgrammingLanguage } from '../../../constants';
+import type { Category } from '../../../constants';
 import { GithubTagsDatasource } from '../../datasource/github-tags';
+import { NodeVersionDatasource } from '../../datasource/node-version';
 import { NpmDatasource } from '../../datasource/npm';
-import * as npmVersioning from '../../versioning/npm';
 
 export { detectGlobalConfig } from './detect';
 export { extractAllPackageFiles } from './extract';
@@ -11,14 +11,16 @@ export {
   updateLockedDependency,
 } from './update';
 export { getRangeStrategy } from './range';
+export { updateArtifacts } from './artifacts';
 
-export const language = ProgrammingLanguage.JavaScript;
 export const supportsLockFileMaintenance = true;
 
+export const displayName = 'npm';
+export const url = 'https://docs.npmjs.com';
+export const categories: Category[] = ['js'];
+
 export const defaultConfig = {
-  fileMatch: ['(^|/)package.json$'],
-  rollbackPrs: true,
-  versioning: npmVersioning.id,
+  fileMatch: ['(^|/)package\\.json$'],
   digest: {
     prBodyDefinitions: {
       Change:
@@ -31,4 +33,8 @@ export const defaultConfig = {
   },
 };
 
-export const supportedDatasources = [GithubTagsDatasource.id, NpmDatasource.id];
+export const supportedDatasources = [
+  GithubTagsDatasource.id,
+  NpmDatasource.id,
+  NodeVersionDatasource.id,
+];

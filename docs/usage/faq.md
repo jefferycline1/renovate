@@ -15,64 +15,66 @@ Renovate will:
 - Use separate branches for each _major_ version of each dependency
 - Pin devDependencies to a single version, rather than use ranges
 - Pin dependencies to a single version if it appears not to be a library
-- Update `yarn.lock` and/or `package-lock.json` files if found
+- Update `yarn.lock` or `package-lock.json` files, if found
 - Create Pull Requests immediately after branch creation
 
 ## Which Renovate versions are officially supported?
 
-The Renovate maintainers only support the latest version of Renovate.
-The Renovate team will only fix bugs for an older version if the hosted app needs to stay on an older major version for a short time or if some critical bug needs to be fixed and the new major is blocked.
+Only the latest version of Renovate is supported by the Renovate maintainers.
+The Renovate team only fixes bugs in an older version if:
 
-If you're using the hosted app, you don't need to do anything, as the Renovate maintainers update the hosted app regularly.
+- the Mend Renovate App needs to stay on that older major version for a short time, or
+- some critical bug needs to be fixed and the new major is blocked
+
+If you're using the Mend Renovate App, you don't need to do anything, as the Renovate maintainers update it regularly.
 If you're self hosting Renovate, use the latest release if possible.
 
 ## Renovate core features not supported on all platforms
 
-| Feature              | Platforms which lack feature                      | See Renovate issue(s)                                        |
-| -------------------- | ------------------------------------------------- | ------------------------------------------------------------ |
-| Dependency Dashboard | BitBucket, BitBucket Server, Azure                | [#9592](https://github.com/renovatebot/renovate/issues/9592) |
-| Hosted app           | GitLab, BitBucket, BitBucket Server, Azure, Gitea |                                                              |
+| Feature               | Platforms which lack feature                    | See Renovate issue(s)                                        |
+| --------------------- | ----------------------------------------------- | ------------------------------------------------------------ |
+| Dependency Dashboard  | Azure, Bitbucket, Bitbucket Server, Gerrit      | [#9592](https://github.com/renovatebot/renovate/issues/9592) |
+| The Mend Renovate App | Azure, Bitbucket Server, Forgejo, Gitea, GitLab |                                                              |
 
 ## Major platform features not supported by Renovate
 
 Some major platform features are not supported at all by Renovate.
 
-| Feature name                            | Platform               | See Renovate issue(s)                                                                                                                                                                                                                                       |
-| --------------------------------------- | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Jira issues                             | BitBucket              | [#3796](https://github.com/renovatebot/renovate/issues/3796)                                                                                                                                                                                                |
-| Merge trains                            | GitLab                 | [#5573](https://github.com/renovatebot/renovate/issues/5573)                                                                                                                                                                                                |
-| Configurable merge strategy and message | Only BitBucket for now | [#10867](https://github.com/renovatebot/renovate/issues/10867) [#10868](https://github.com/renovatebot/renovate/issues/10868) [#10869](https://github.com/renovatebot/renovate/issues/10869) [#10870](https://github.com/renovatebot/renovate/issues/10870) |
+| Feature name                            | Platform                                  | See Renovate issue(s)                                                                                                                                                                        |
+| --------------------------------------- | ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Jira issues                             | Bitbucket                                 | [#20568](https://github.com/renovatebot/renovate/issues/20568)                                                                                                                               |
+| Jira issues                             | Bitbucket Server                          | [#3796](https://github.com/renovatebot/renovate/issues/3796)                                                                                                                                 |
+| Merge trains                            | GitLab                                    | [#5573](https://github.com/renovatebot/renovate/issues/5573)                                                                                                                                 |
+| Configurable merge strategy and message | Only Bitbucket, Forgejo and Gitea for now | [#10867](https://github.com/renovatebot/renovate/issues/10867) [#10869](https://github.com/renovatebot/renovate/issues/10869) [#10870](https://github.com/renovatebot/renovate/issues/10870) |
 
 ## What is this `main` branch I see in the documentation?
 
 When you create a new repository with Git, Git creates a base branch for you.
 The default branch name that Git uses is `master` (this will be changed to `main` later).
 
-The Git-hosting ecosystem has settled on using `main` to replace `master`.
+The Git-hosting ecosystem decided to use `main` instead of `master`.
 When you create a new repository on say GitHub or GitLab, you'll get a `main` branch as your base branch.
 
-We've replaced `master` with `main` in our documentation where possible.
+We replaced `master` with `main` in our documentation where possible.
 
-A branch name has no special meaning within the Git program, it's just a name.
+A branch name has no special meaning within the Git program, it's only a name.
 The base branch could be called `trunk` or `mainline` or `prod`, and Git would work just as well.
 
 ## What if I need to .. ?
 
 ### Troubleshoot Renovate
 
-If you have problems with Renovate, or need to know where Renovate keeps the logging output then read our [troubleshooting documentation](https://docs.renovatebot.com/troubleshooting/).
+If you have problems with Renovate, or want to know where Renovate keeps the logging output then read our [troubleshooting documentation](./troubleshooting.md).
 
 ### Tell Renovate to ask for approval before creating a Pull Request
 
-The default behavior is that Renovate creates a pull request right away whenever there's an update.
+By default, Renovate creates a pull request right away whenever there's an update.
 But maybe you want Renovate to ask for your approval _before_ it creates a pull request.
 Use the "Dependency Dashboard approval" workflow to get updates for certain packages - or certain types of updates - only after you give approval via the Dependency Dashboard.
 
 The basic idea is that you create a new `packageRules` entry and describe what kind of package, or type of updates you want to approve beforehand.
 
-Say you want to manually approve all major `npm` package manager updates:
-
-```json
+```json title="Manually approve all major npm package manager updates"
 {
   "packageRules": [
     {
@@ -84,13 +86,11 @@ Say you want to manually approve all major `npm` package manager updates:
 }
 ```
 
-Or say you want to manually approve all major Jest updates:
-
-```json
+```json title="Manually approve all major Jest updates"
 {
   "packageRules": [
     {
-      "matchPackagePatterns": ["^jest"],
+      "matchPackageNames": ["jest"],
       "matchUpdateTypes": ["major"],
       "dependencyDashboardApproval": true
     }
@@ -98,8 +98,8 @@ Or say you want to manually approve all major Jest updates:
 }
 ```
 
-You could even configure Renovate bot to ask for approval for _all_ updates.
-The `dependencyDashboardApproval` is not part of a `packageRules` array, and so applies to all updates:
+You may even configure Renovate bot to ask for approval for _all_ updates.
+The `dependencyDashboardApproval` config option is outside of a `packageRules` array, and so applies to all updates:
 
 ```json
 {
@@ -107,7 +107,7 @@ The `dependencyDashboardApproval` is not part of a `packageRules` array, and so 
 }
 ```
 
-Read our documentation on the [dependencyDashboardApproval](https://docs.renovatebot.com/configuration-options/#dependencydashboardapproval) config option.
+Read our documentation on the [dependencyDashboardApproval](./configuration-options.md#dependencydashboardapproval) config option.
 
 ### Use an alternative branch as my Pull Request target
 
@@ -130,7 +130,7 @@ See the dedicated [Private npm module support](./getting-started/private-package
 
 ### Control Renovate's schedule
 
-To learn all about controlling Renovate schedule, read the [key concepts, scheduling](https://docs.renovatebot.com/key-concepts/scheduling/) docs.
+To learn about controlling Renovate schedule, read the [key concepts, scheduling](./key-concepts/scheduling.md) docs.
 
 ### Disable Renovate for certain dependency types
 
@@ -150,13 +150,14 @@ Set configuration option `rangeStrategy` to `"replace"`.
 
 ### Keep lock files (including sub-dependencies) up-to-date, even when `package.json` hasn't changed
 
-By default, if you enable lock-file maintenance, Renovate will update the lockfile `["before 5am on monday"]`.
-If you want to update the lock file more often, update the `schedule` field inside the `lockFileMaintenance` object.
+By default, if you enable lock-file maintenance, Renovate will update the lockfile `["before 4am on monday"]`.
+If you want to update the lock file more often, set the `schedule` field inside the `lockFileMaintenance` object.
 
 ### Wait until tests have passed before creating the PR
 
 Set the configuration option `prCreation` to `"status-success"`.
-Branches with failing tests will remain in Git and continue to get updated if necessary, but no PR will be created until their tests pass.
+Branches with failing tests will remain in Git and get updated if needed.
+Renovate will only create a PR once the tests pass.
 
 ### Wait until tests have passed before creating a PR, but create the PR even if they fail
 
@@ -192,18 +193,20 @@ e.g.
 
 ### Apply a rule, but only for packages starting with `abc`
 
-Do the same as above, but instead of using `matchPackageNames`, use `matchPackagePatterns` and a regex:
+Do the same as above, but instead of an exact match, use a glob prefix:
 
 ```json
 {
   "packageRules": [
     {
-      "matchPackagePatterns": "^abc",
+      "matchPackageNames": "abc**",
       "assignees": ["importantreviewer"]
     }
   ]
 }
 ```
+
+For more examples, see [String Pattern Matching, example glob patterns](./string-pattern-matching.md#example-glob-patterns).
 
 ### Group all packages starting with `abc` together in one PR
 
@@ -213,7 +216,7 @@ As above, but apply a `groupName`:
 {
   "packageRules": [
     {
-      "matchPackagePatterns": "^abc",
+      "matchPackageNames": "abc**",
       "groupName": ["abc packages"]
     }
   ]
@@ -227,38 +230,39 @@ You can use the `branchName`, `commitMessage`, `prTitle` or `prBody` configurati
 ### Automatically merge passing Pull Requests
 
 Set the configuration option `automerge` to `true`.
-Nest it inside config objects `patch` or `minor` if you want it to apply to certain types only.
+Nest it inside a `patch` or `minor` object if you only want to automerge certain types of updates.
 
 ### Separate patch releases from minor releases
 
 #### Renovate's default behavior for major/minor releases
 
-Renovate's default behavior is to separate major and minor releases, patch releases are also considered "minor".
-Let's explain the default behavior with an example:
+By default, Renovate separates major and minor releases.
+Patch releases are treated as "minor".
+Here's an example:
 
-Say you are using a package `foo`, it's the `0.8.0` version.
-The `foo` maintainers then release the following versions:
+Say you're using version `0.8.0` of the `foo` package.
+The `foo` maintainers release the following versions:
 
 - `0.8.1` (patch)
 - `0.9.0` (minor)
 - `1.0.0` (major)
 
-Renovate would then open the following PRs:
+Renovate creates the following PRs:
 
 - Update dependency `foo` to `0.9.0` (minor)
 - Update dependency `foo` to `1.0.0` (major)
 
-Note how Renovate groups the patch and minor versions together into one PR.
+Renovate groups the patch and minor versions into one PR.
 This means you only get a PR for the minor version, `0.9.0`.
 
-You can override the default behavior.
+You can override this default behavior.
 To learn more read the section below.
 
 #### Overriding the default behavior for major/minor releases
 
-You can see in the example above that Renovate won't normally open a PR for the `foo` patch release.
+You can see in the example above that Renovate won't normally create a PR for the `foo` patch release.
 
-You can tell Renovate to open a separate PR for the patch release by setting `separateMinorPatch` to `true`.
+You can tell Renovate to create a separate PR for the patch release by setting `separateMinorPatch` to `true`.
 
 In both cases, Renovate will open 3 PRs:
 
@@ -266,10 +270,10 @@ In both cases, Renovate will open 3 PRs:
 - Update dependency `foo` to `0.9.0` (minor)
 - Update dependency `foo` to `1.0.0` (major)
 
-Most people don't want more PRs though.
-But it can still be handy to get PRs for patches when using automerge:
+Usually you don't want more PRs though.
+It can be nice to get patch PRs when you're using automerge:
 
 - Get daily patch updates which are automerged once tests pass
 - Get weekly updates for minor and major updates
 
-The end result would be that you barely notice Renovate during the week, while you still get the benefits of patch level updates.
+This means you barely notice Renovate during the week, while you still get the benefits of patch level updates.

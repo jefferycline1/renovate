@@ -1,12 +1,12 @@
+import { HTTPError } from 'got';
 import * as httpMock from '../../../test/http-mock';
-import { PlatformId } from '../../constants';
 import { EXTERNAL_HOST_ERROR } from '../../constants/error-messages';
 import { GitlabReleasesDatasource } from '../../modules/datasource/gitlab-releases';
 import * as hostRules from '../host-rules';
 import { GitlabHttp, setBaseUrl } from './gitlab';
 
 hostRules.add({
-  hostType: PlatformId.Gitlab,
+  hostType: 'gitlab',
   token: '123test',
 });
 
@@ -22,14 +22,12 @@ describe('util/http/gitlab', () => {
     delete process.env.GITLAB_IGNORE_REPO_URL;
 
     hostRules.add({
-      hostType: PlatformId.Gitlab,
+      hostType: 'gitlab',
       token: 'abc123',
     });
   });
 
   afterEach(() => {
-    jest.resetAllMocks();
-
     hostRules.clear();
   });
 
@@ -46,7 +44,9 @@ describe('util/http/gitlab', () => {
       })
       .get('/api/v4/some-url&page=3')
       .reply(200, ['d']);
-    const res = await gitlabApi.getJson('some-url', { paginate: true });
+    const res = await gitlabApi.getJsonUnchecked('some-url', {
+      paginate: true,
+    });
     expect(res.body).toHaveLength(4);
   });
 
@@ -66,13 +66,15 @@ describe('util/http/gitlab', () => {
       })
       .get('/api/v4/some-url&page=3')
       .reply(200, ['d']);
-    const res = await gitlabApi.getJson('some-url', { paginate: true });
+    const res = await gitlabApi.getJsonUnchecked('some-url', {
+      paginate: true,
+    });
     expect(res.body).toHaveLength(4);
   });
 
   it('supports different datasources', async () => {
     const gitlabApiDatasource = new GitlabHttp(GitlabReleasesDatasource.id);
-    hostRules.add({ hostType: PlatformId.Gitlab, token: 'abc' });
+    hostRules.add({ hostType: 'gitlab', token: 'abc' });
     hostRules.add({
       hostType: GitlabReleasesDatasource.id,
       token: 'def',
@@ -89,7 +91,9 @@ describe('util/http/gitlab', () => {
     httpMock.scope(gitlabApiHost).get('/api/v4/some-url').reply(200, ['a'], {
       link: '<https://gitlab.com/api/v4/some-url&page=3>; rel="last"',
     });
-    const res = await gitlabApi.getJson('some-url', { paginate: true });
+    const res = await gitlabApi.getJsonUnchecked('some-url', {
+      paginate: true,
+    });
     expect(res.body).toHaveLength(1);
   });
 
@@ -108,25 +112,25 @@ describe('util/http/gitlab', () => {
     it('403', async () => {
       httpMock.scope(gitlabApiHost).get('/api/v4/some-url').reply(403);
       await expect(
-        gitlabApi.get('some-url')
+        gitlabApi.get('some-url'),
       ).rejects.toThrowErrorMatchingInlineSnapshot(
-        `"Response code 403 (Forbidden)"`
+        `"Response code 403 (Forbidden)"`,
       );
     });
 
     it('404', async () => {
       httpMock.scope(gitlabApiHost).get('/api/v4/some-url').reply(404);
       await expect(
-        gitlabApi.get('some-url')
+        gitlabApi.get('some-url'),
       ).rejects.toThrowErrorMatchingInlineSnapshot(
-        `"Response code 404 (Not Found)"`
+        `"Response code 404 (Not Found)"`,
       );
     });
 
     it('500', async () => {
       httpMock.scope(gitlabApiHost).get('/api/v4/some-url').reply(500);
       await expect(gitlabApi.get('some-url')).rejects.toThrow(
-        EXTERNAL_HOST_ERROR
+        EXTERNAL_HOST_ERROR,
       );
     });
 
@@ -136,14 +140,54 @@ describe('util/http/gitlab', () => {
         .get('/api/v4/some-url')
         .replyWithError({ code: 'EAI_AGAIN' });
       await expect(gitlabApi.get('some-url')).rejects.toThrow(
-        EXTERNAL_HOST_ERROR
+        EXTERNAL_HOST_ERROR,
       );
     });
 
     it('ParseError', async () => {
       httpMock.scope(gitlabApiHost).get('/api/v4/some-url').reply(200, '{{');
-      await expect(gitlabApi.getJson('some-url')).rejects.toThrow(
-        EXTERNAL_HOST_ERROR
+      await expect(gitlabApi.getJsonUnchecked('some-url')).rejects.toThrow(
+        EXTERNAL_HOST_ERROR,
+      );
+    });
+  });
+
+  describe('handles 409 errors', () => {
+    let NODE_ENV: string | undefined;
+
+    beforeAll(() => {
+      // Unset NODE_ENV so that we can test the retry logic
+      NODE_ENV = process.env.NODE_ENV;
+      delete process.env.NODE_ENV;
+    });
+
+    afterAll(() => {
+      process.env.NODE_ENV = NODE_ENV;
+    });
+
+    it('retries the request on resource lock', async () => {
+      const body = { message: '409 Conflict: Resource lock' };
+      httpMock.scope(gitlabApiHost).post('/api/v4/some-url').reply(409, body);
+      httpMock.scope(gitlabApiHost).post('/api/v4/some-url').reply(200, {});
+      const res = await gitlabApi.postJson('some-url', {});
+      expect(res.statusCode).toBe(200);
+    });
+
+    it('does not retry more than twice on resource lock', async () => {
+      const body = { message: '409 Conflict: Resource lock' };
+      httpMock.scope(gitlabApiHost).post('/api/v4/some-url').reply(409, body);
+      httpMock.scope(gitlabApiHost).post('/api/v4/some-url').reply(409, body);
+      httpMock.scope(gitlabApiHost).post('/api/v4/some-url').reply(409, body);
+      await expect(gitlabApi.postJson('some-url', {})).rejects.toThrow(
+        HTTPError,
+      );
+    });
+
+    it('does not retry for other reasons', async () => {
+      const body = { message: 'Other reason' };
+      httpMock.scope(gitlabApiHost).post('/api/v4/some-url').reply(409, body);
+      await expect(gitlabApi.postJson('some-url', {})).rejects.toThrow(
+        HTTPError,
       );
     });
   });

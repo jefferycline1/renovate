@@ -1,0 +1,52 @@
+name: 'Update static data'
+on:
+  schedule:
+    - cron: '0 0 * * 0' # Every Sunday at midnight
+  workflow_dispatch:
+
+env:
+  NODE_VERSION: 22
+
+permissions:
+  contents: read
+
+jobs:
+  update-data:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          show-progress: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@fe02b34f77f8bc703788d5817da081398fad5dd2 # v4.0.0
+        with:
+          standalone: true
+
+      - name: Set up Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Update static data
+        run: pnpm run update-static-data
+
+      - name: Run Prettier
+        run: pnpm prettier-fix
+
+      - name: Create pull request
+        uses: peter-evans/create-pull-request@67ccf781d68cd99b580ae25a5c18a1cc84ffff1f # v7.0.6
+        with:
+          author: 'Renovate Bot <renovate@whitesourcesoftware.com>'
+          branch: 'chore/update-static-data'
+          commit-message: 'fix(data): automatic update of static data'
+          committer: 'Renovate Bot <renovate@whitesourcesoftware.com>'
+          title: 'fix(data): automatic update of static data'
+          assignees: rarkins,viceice

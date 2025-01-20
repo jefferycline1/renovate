@@ -12,7 +12,7 @@ export function updateDependency({
     logger.warn('gradle manager does not support replacement updates yet');
     return null;
   }
-  // TODO check null (#7154)
+  // TODO check null (#22198)
   const offset = managerData!.fileReplacePosition;
   const leftPart = fileContent.slice(0, offset);
   const rightPart = fileContent.slice(offset);
@@ -23,7 +23,8 @@ export function updateDependency({
     if (version === newValue) {
       return fileContent;
     }
-    if (version === currentValue || upgrade.groupName) {
+    if (version === currentValue || upgrade.sharedVariableName) {
+      // TODO: types (#22198)
       return `${leftPart}${newValue}${restPart}`;
     }
     logger.debug({ depName, version, currentValue, newValue }, 'Unknown value');

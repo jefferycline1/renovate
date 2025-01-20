@@ -1,8 +1,6 @@
 import { eq, major, minor, patch, prerelease } from '@renovatebot/ruby-semver';
-import {
-  SegmentElement,
-  create,
-} from '@renovatebot/ruby-semver/dist/ruby/version.js';
+import type { SegmentElement } from '@renovatebot/ruby-semver/dist/ruby/version.js';
+import { create } from '@renovatebot/ruby-semver/dist/ruby/version.js';
 import { regEx } from '../../../util/regex';
 
 interface RubyVersion {
@@ -28,11 +26,34 @@ const parse = (version: string): RubyVersion => ({
   prerelease: prerelease(version),
 });
 
+const floor = (version: string): string => {
+  const segments = releaseSegments(version);
+  if (segments.length <= 1) {
+    // '~> 2' is equivalent to '~> 2.0', thus no need to floor
+    return segments.join('.');
+  }
+  return [...segments.slice(0, -1), 0].join('.');
+};
+
 const adapt = (left: string, right: string): string =>
   left.split('.').slice(0, right.split('.').length).join('.');
 
-const floor = (version: string): string =>
-  [...releaseSegments(version).slice(0, -1), 0].join('.');
+const trimZeroes = (version: string): string => {
+  const segments = version.split('.');
+  while (segments.length > 0 && segments[segments.length - 1] === '0') {
+    segments.pop();
+  }
+  return segments.join('.');
+};
+
+// Returns the upper bound of `~>` operator.
+const pgteUpperBound = (version: string): string => {
+  const segments = releaseSegments(version);
+  if (segments.length > 1) {
+    segments.pop();
+  }
+  return incrementLastSegment(segments.join('.'));
+};
 
 // istanbul ignore next
 const incrementLastSegment = (version: string): string => {
@@ -47,7 +68,7 @@ const incrementMajor = (
   maj: number,
   min: number,
   ptch: number,
-  pre: string[]
+  pre: string[],
 ): number => (min === 0 || ptch === 0 || pre.length === 0 ? maj + 1 : maj);
 
 // istanbul ignore next
@@ -97,7 +118,7 @@ const decrement = (version: string): string => {
       (
         accumulator: number[],
         segment: SegmentElement,
-        index: number
+        index: number,
       ): number[] => {
         if (index === 0) {
           return [(segment as number) - 1];
@@ -113,10 +134,18 @@ const decrement = (version: string): string => {
 
         return [...accumulator, segment as number];
       },
-      []
+      [],
     );
 
   return nextSegments.reverse().join('.');
 };
 
-export { parse, floor, increment, decrement };
+export {
+  parse,
+  adapt,
+  floor,
+  trimZeroes,
+  pgteUpperBound,
+  increment,
+  decrement,
+};

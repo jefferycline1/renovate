@@ -1,6 +1,7 @@
 import { getPkgReleases } from '..';
 import { Fixtures } from '../../../../test/fixtures';
 import * as httpMock from '../../../../test/http-mock';
+import { EXTERNAL_HOST_ERROR } from '../../../constants/error-messages';
 import { GalaxyDatasource } from '.';
 
 const baseUrl = 'https://galaxy.ansible.com/';
@@ -15,8 +16,8 @@ describe('modules/datasource/galaxy/index', () => {
       expect(
         await getPkgReleases({
           datasource: GalaxyDatasource.id,
-          depName: 'non_existent_crate',
-        })
+          packageName: 'non_existent_crate',
+        }),
       ).toBeNull();
     });
 
@@ -28,8 +29,8 @@ describe('modules/datasource/galaxy/index', () => {
       expect(
         await getPkgReleases({
           datasource: GalaxyDatasource.id,
-          depName: 'non_existent_crate',
-        })
+          packageName: 'non_existent_crate',
+        }),
       ).toBeNull();
     });
 
@@ -41,8 +42,8 @@ describe('modules/datasource/galaxy/index', () => {
       expect(
         await getPkgReleases({
           datasource: GalaxyDatasource.id,
-          depName: 'non_existent_crate',
-        })
+          packageName: 'non_existent_crate',
+        }),
       ).toBeNull();
     });
 
@@ -54,8 +55,8 @@ describe('modules/datasource/galaxy/index', () => {
       expect(
         await getPkgReleases({
           datasource: GalaxyDatasource.id,
-          depName: 'some_crate',
-        })
+          packageName: 'some_crate',
+        }),
       ).toBeNull();
     });
 
@@ -67,8 +68,8 @@ describe('modules/datasource/galaxy/index', () => {
       expect(
         await getPkgReleases({
           datasource: GalaxyDatasource.id,
-          depName: 'some_crate',
-        })
+          packageName: 'some_crate',
+        }),
       ).toBeNull();
     });
 
@@ -76,14 +77,39 @@ describe('modules/datasource/galaxy/index', () => {
       httpMock
         .scope(baseUrl)
         .get('/api/v1/roles/?owner__username=yatesr&name=timezone')
-        .reply(200, Fixtures.get('timezone'));
+        .reply(200, Fixtures.get('timezone.json'));
       const res = await getPkgReleases({
         datasource: GalaxyDatasource.id,
-        depName: 'yatesr.timezone',
+        packageName: 'yatesr.timezone',
       });
       expect(res).toMatchSnapshot();
       expect(res).not.toBeNull();
       expect(res).toBeDefined();
+    });
+
+    it('handles multiple results when one user matches exactly', async () => {
+      httpMock
+        .scope(baseUrl)
+        .get('/api/v1/roles/?owner__username=datadog&name=datadog')
+        .reply(200, Fixtures.get('datadog.json'));
+      const res = await getPkgReleases({
+        datasource: GalaxyDatasource.id,
+        packageName: 'datadog.datadog',
+      });
+      expect(res).not.toBeNull();
+      expect(res?.releases).toHaveLength(11);
+    });
+
+    it('rejects multiple results when no user matches exactly', async () => {
+      httpMock
+        .scope(baseUrl)
+        .get('/api/v1/roles/?owner__username=nope&name=nope')
+        .reply(200, Fixtures.get('datadog.json'));
+      const res = await getPkgReleases({
+        datasource: GalaxyDatasource.id,
+        packageName: 'nope.nope',
+      });
+      expect(res).toBeNull();
     });
 
     it('return null if searching random username and project name', async () => {
@@ -93,7 +119,7 @@ describe('modules/datasource/galaxy/index', () => {
         .reply(200, Fixtures.get('empty'));
       const res = await getPkgReleases({
         datasource: GalaxyDatasource.id,
-        depName: 'foo.bar',
+        packageName: 'foo.bar',
       });
       expect(res).toBeNull();
     });
@@ -103,17 +129,12 @@ describe('modules/datasource/galaxy/index', () => {
         .scope(baseUrl)
         .get('/api/v1/roles/?owner__username=some_crate&name=undefined')
         .reply(502);
-      let e;
-      try {
-        await getPkgReleases({
+      await expect(
+        getPkgReleases({
           datasource: GalaxyDatasource.id,
-          depName: 'some_crate',
-        });
-      } catch (err) {
-        e = err;
-      }
-      expect(e).toBeDefined();
-      expect(e).toMatchSnapshot();
+          packageName: 'some_crate',
+        }),
+      ).rejects.toThrow(EXTERNAL_HOST_ERROR);
     });
 
     it('throws for 404', async () => {
@@ -123,7 +144,7 @@ describe('modules/datasource/galaxy/index', () => {
         .reply(404);
       const res = await getPkgReleases({
         datasource: GalaxyDatasource.id,
-        depName: 'foo.bar',
+        packageName: 'foo.bar',
       });
       expect(res).toBeNull();
     });

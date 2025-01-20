@@ -1,11 +1,15 @@
 import { ExternalHostError } from '../../types/errors/external-host-error';
-import { Http } from '../../util/http';
-import type { HttpError } from '../../util/http';
+import { Http, HttpError } from '../../util/http';
 import type {
   DatasourceApi,
   DigestConfig,
   GetReleasesConfig,
+  PostprocessReleaseConfig,
+  PostprocessReleaseResult,
+  RegistryStrategy,
+  Release,
   ReleaseResult,
+  SourceUrlSupport,
 } from './types';
 
 export abstract class Datasource implements DatasourceApi {
@@ -21,35 +25,51 @@ export abstract class Datasource implements DatasourceApi {
 
   defaultRegistryUrls?: string[] | (() => string[]);
 
-  defaultVersioning: string | undefined;
+  defaultVersioning?: string | undefined;
 
-  registryStrategy: 'first' | 'hunt' | 'merge' | undefined = 'first';
+  registryStrategy: RegistryStrategy | undefined = 'first';
+
+  releaseTimestampSupport = false;
+  releaseTimestampNote?: string | undefined;
+
+  sourceUrlSupport: SourceUrlSupport = 'none';
+  sourceUrlNote?: string | undefined;
 
   protected http: Http;
 
   abstract getReleases(
-    getReleasesConfig: GetReleasesConfig
+    getReleasesConfig: GetReleasesConfig,
   ): Promise<ReleaseResult | null>;
 
   getDigest?(config: DigestConfig, newValue?: string): Promise<string | null>;
 
-  // eslint-disable-next-line @typescript-eslint/no-empty-function
-  handleSpecificErrors(err: HttpError): void {}
+  handleHttpErrors(err: HttpError): void {}
 
-  protected handleGenericErrors(err: HttpError): never {
+  protected handleGenericErrors(err: Error): never {
     // istanbul ignore if: not easy testable with nock
     if (err instanceof ExternalHostError) {
       throw err;
     }
-    this.handleSpecificErrors(err);
-    if (err.response?.statusCode !== undefined) {
-      if (
-        err.response?.statusCode === 429 ||
-        (err.response?.statusCode >= 500 && err.response?.statusCode < 600)
-      ) {
-        throw new ExternalHostError(err);
+
+    if (err instanceof HttpError) {
+      this.handleHttpErrors(err);
+
+      const statusCode = err.response?.statusCode;
+      if (statusCode) {
+        if (statusCode === 429 || (statusCode >= 500 && statusCode < 600)) {
+          throw new ExternalHostError(err);
+        }
       }
     }
+
     throw err;
+  }
+
+  // istanbul ignore next: no-op implementation, never called
+  postprocessRelease(
+    _config: PostprocessReleaseConfig,
+    release: Release,
+  ): Promise<PostprocessReleaseResult> {
+    return Promise.resolve(release);
   }
 }

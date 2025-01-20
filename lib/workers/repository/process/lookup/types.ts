@@ -2,12 +2,12 @@ import type {
   RenovateConfig,
   ValidationMessage,
 } from '../../../../config/types';
-import type { Release } from '../../../../modules/datasource/types';
 import type {
   LookupUpdate,
   RangeConfig,
 } from '../../../../modules/manager/types';
 import type { SkipReason } from '../../../../types';
+import type { MergeConfidence } from '../../../../util/merge-confidence/types';
 
 export interface FilterConfig {
   allowedVersions?: string;
@@ -41,10 +41,16 @@ export interface LookupUpdateConfig
   isVulnerabilityAlert?: boolean;
   separateMajorMinor?: boolean;
   separateMultipleMajor?: boolean;
+  separateMultipleMinor?: boolean;
   datasource: string;
-  depName: string;
-  minimumConfidence?: string;
-  extractedConstraints?: Record<string, string>;
+  packageName: string;
+  minimumConfidence?: MergeConfidence | undefined;
+  replacementName?: string;
+  replacementNameTemplate?: string;
+  replacementVersion?: string;
+  extractVersion?: string;
+  vulnerabilityFixVersion?: string;
+  vulnerabilityFixStrategy?: string;
 }
 
 export interface UpdateResult {
@@ -56,10 +62,15 @@ export interface UpdateResult {
   sourceUrl?: string | null;
   currentVersion?: string;
   isSingleVersion?: boolean;
+  lookupName?: string;
   skipReason?: SkipReason;
-  releases: Release[];
+  registryUrl?: string;
   fixedVersion?: string;
   updates: LookupUpdate[];
   warnings: ValidationMessage[];
   versioning?: string;
+  currentVersionAgeInDays?: number;
+  currentVersionTimestamp?: string;
+  vulnerabilityFixVersion?: string;
+  vulnerabilityFixStrategy?: string;
 }

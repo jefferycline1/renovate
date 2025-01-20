@@ -1,5 +1,4 @@
 export type SkipReason =
-  | 'any-version'
   | 'contains-variable'
   | 'disabled'
   | 'empty'
@@ -25,15 +24,15 @@ export type SkipReason =
   | 'no-repository'
   | 'no-source-match'
   | 'no-source'
-  | 'no-version'
   | 'non-hex-dep-types'
   | 'not-a-version'
+  | 'package-rules'
   | 'path-dependency'
   | 'placeholder-url'
   | 'unknown-engines'
   | 'unknown-registry'
-  | 'unknown-version'
   | 'unknown-volta'
+  | 'unspecified-version'
   | 'unsupported-chart-type'
   | 'unsupported-datasource'
   | 'unsupported-remote'
@@ -44,4 +43,18 @@ export type SkipReason =
   | 'version-placeholder'
   | 'is-pinned'
   | 'missing-depname'
-  | 'recursive-placeholder';
+  | 'recursive-placeholder'
+  | 'github-token-required'
+  | 'inherited-dependency';
+
+export type StageName =
+  | 'current-timestamp'
+  | 'datasource-merge'
+  | 'extract'
+  | 'lock-file-maintenance-merge'
+  | 'lock-file-maintenance-merge-2'
+  | 'lookup'
+  | 'pre-lookup'
+  | 'source-url'
+  | 'update-type'
+  | 'update-type-merge';

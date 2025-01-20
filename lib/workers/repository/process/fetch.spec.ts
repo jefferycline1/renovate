@@ -1,4 +1,6 @@
-import { RenovateConfig, getConfig, mocked } from '../../../../test/util';
+import type { RenovateConfig } from '../../../../test/util';
+import { mocked } from '../../../../test/util';
+import { getConfig } from '../../../config/defaults';
 import { MavenDatasource } from '../../../modules/datasource/maven';
 import type { PackageFile } from '../../../modules/manager/types';
 import { ExternalHostError } from '../../../types/errors/external-host-error';
@@ -14,7 +16,6 @@ describe('workers/repository/process/fetch', () => {
     let config: RenovateConfig;
 
     beforeEach(() => {
-      jest.resetAllMocks();
       config = getConfig();
     });
 
@@ -49,7 +50,33 @@ describe('workers/repository/process/fetch', () => {
         ],
       };
       await fetchUpdates(config, packageFiles);
-      expect(packageFiles).toMatchSnapshot();
+      expect(packageFiles).toEqual({
+        npm: [
+          {
+            deps: [
+              {
+                depName: 'abcd',
+                packageName: 'abcd',
+                skipReason: 'ignored',
+                updates: [],
+              },
+              {
+                depName: 'foo',
+                packageName: 'foo',
+                skipReason: 'disabled',
+                updates: [],
+              },
+              {
+                depName: 'skipped',
+                packageName: 'skipped',
+                skipReason: 'some-reason',
+                updates: [],
+              },
+            ],
+            packageFile: 'package.json',
+          },
+        ],
+      });
       expect(packageFiles.npm[0].deps[0].skipReason).toBe('ignored');
       expect(packageFiles.npm[0].deps[0].updates).toHaveLength(0);
       expect(packageFiles.npm[0].deps[1].skipReason).toBe('disabled');
@@ -58,17 +85,34 @@ describe('workers/repository/process/fetch', () => {
 
     it('fetches updates', async () => {
       config.rangeStrategy = 'auto';
+      config.constraints = { some: 'different' };
       const packageFiles: any = {
         maven: [
           {
             packageFile: 'pom.xml',
+            extractedConstraints: { some: 'constraint', other: 'constraint' },
             deps: [{ datasource: MavenDatasource.id, depName: 'bbb' }],
           },
         ],
       };
       lookupUpdates.mockResolvedValue({ updates: ['a', 'b'] } as never);
       await fetchUpdates(config, packageFiles);
-      expect(packageFiles).toMatchSnapshot();
+      expect(packageFiles).toEqual({
+        maven: [
+          {
+            deps: [
+              {
+                datasource: 'maven',
+                depName: 'bbb',
+                packageName: 'bbb',
+                updates: ['a', 'b'],
+              },
+            ],
+            extractedConstraints: { other: 'constraint', some: 'constraint' },
+            packageFile: 'pom.xml',
+          },
+        ],
+      });
     });
 
     it('skips deps with empty names', async () => {
@@ -116,7 +160,7 @@ describe('workers/repository/process/fetch', () => {
       };
       await fetchUpdates(config, packageFiles);
       expect(packageFiles.docker[0].deps[0].skipReason).toBe(
-        'internal-package'
+        'internal-package',
       );
       expect(packageFiles.docker[0].deps[0].updates).toHaveLength(0);
     });
@@ -156,7 +200,7 @@ describe('workers/repository/process/fetch', () => {
       lookupUpdates.mockRejectedValueOnce(new Error('some error'));
 
       await expect(
-        fetchUpdates({ ...config, repoIsOnboarded: true }, packageFiles)
+        fetchUpdates({ ...config, repoIsOnboarded: true }, packageFiles),
       ).rejects.toThrow();
     });
 
@@ -173,7 +217,7 @@ describe('workers/repository/process/fetch', () => {
       lookupUpdates.mockRejectedValueOnce(new Error('some error'));
 
       await expect(
-        fetchUpdates({ ...config, repoIsOnboarded: true }, packageFiles)
+        fetchUpdates({ ...config, repoIsOnboarded: true }, packageFiles),
       ).rejects.toThrow();
     });
 
